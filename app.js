@@ -267,9 +267,12 @@ function openSlidesViewer(article) {
 
 function createViewerPages(article) {
   const presentationId = extractPresentationId(article.slides.url);
+  const previewUrl = presentationId ? createSlidesPreviewUrl(presentationId) : "";
   const baseNotes = [
-    "既存 Google Slides Viewer のスライド閲覧部分を想定したプレビューです。",
-    "本番では presentationId を使ってページ画像、サムネイル、スピーカーノートを取得します。",
+    previewUrl
+      ? "Google Slides のプレビューを表示しています。閲覧できない場合は共有設定を確認するか、外部で開いてください。"
+      : "Google Slides URL から presentationId を抽出できませんでした。外部で開く操作を使ってください。",
+    "将来は google-slides-speakerdeck-viewer と同じくページ画像、サムネイル、スピーカーノート取得に差し替えます。",
     "iPadでは一覧を左に残し、右側でスライドとノートを同時に確認できます。",
     "外部で開く操作からGoogle Slides本体にも移動できます。"
   ];
@@ -277,7 +280,8 @@ function createViewerPages(article) {
     pageNumber: index + 1,
     title: index === 0 ? article.title : `${article.title} ${index + 1}`,
     subtitle: presentationId ? `presentationId: ${presentationId}` : "Google Slides URL",
-    speakerNote: note
+    speakerNote: note,
+    previewUrl: index === 0 ? previewUrl : ""
   }));
 }
 
@@ -286,13 +290,15 @@ function setSlideIndex(nextIndex) {
   const max = state.viewerPages.length - 1;
   state.currentSlideIndex = Math.max(0, Math.min(max, nextIndex));
   const page = state.viewerPages[state.currentSlideIndex];
-  els.slideFrame.innerHTML = `
-    <div class="slide-card-preview">
-      <strong>${escapeHtml(page.title)}</strong>
-      <span>${escapeHtml(page.subtitle)}</span>
-      <span>Page ${page.pageNumber}</span>
-    </div>
-  `;
+  els.slideFrame.innerHTML = page.previewUrl
+    ? `<iframe class="slides-embed" src="${escapeHtml(page.previewUrl)}" title="${escapeHtml(page.title)}" allowfullscreen></iframe>`
+    : `
+      <div class="slide-card-preview">
+        <strong>${escapeHtml(page.title)}</strong>
+        <span>${escapeHtml(page.subtitle)}</span>
+        <span>Page ${page.pageNumber}</span>
+      </div>
+    `;
   els.slideCounter.textContent = `${page.pageNumber} / ${state.viewerPages.length}`;
   els.speakerNoteContent.textContent = page.speakerNote;
   els.prevSlideButton.disabled = state.currentSlideIndex === 0;
@@ -376,6 +382,10 @@ function extractPresentationId(url) {
   if (!url) return "";
   const match = url.match(/\/presentation\/d\/([^/]+)/);
   return match ? match[1] : "";
+}
+
+function createSlidesPreviewUrl(presentationId) {
+  return `https://docs.google.com/presentation/d/${encodeURIComponent(presentationId)}/preview`;
 }
 
 function escapeHtml(value) {
