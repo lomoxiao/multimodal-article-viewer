@@ -1,0 +1,59 @@
+[
+  {
+    "articleId": "url_a8f31c9d4e21b7aa",
+    "canonicalUrl": "https://example.com/article",
+    "originalUrl": "https://example.com/article?utm_source=twitter",
+    "title": "記事タイトル",
+    "source": {
+      "kind": "web",
+      "headline": "AnthropicがFable 5・Mythos 5を米政府輸出管理指令で全面停止・史上初・SpaceX上場時価総額1.75兆ドル・G7エヴィアン明日15日開幕・トランプ・イラン合意署名・日経平均66,020円"
+    },
+    "slides": {
+      "status": "completed",
+      "url": "https://docs.google.com/presentation/d/1ExampleSlidesDeckIdForViewer/edit"
+    },
+    "manga": {
+      "status": "completed",
+      "url": "https://notebooklm.google.com/notebook/example"
+    },
+    "updatedAt": "2026-06-14T00:00:00.000Z"
+  },
+  {
+    "articleId": "yt_c12b8d4429",
+    "canonicalUrl": "https://www.youtube.com/watch?v=example",
+    "originalUrl": "https://youtu.be/example",
+    "title": "AIエージェント市場の最新動向",
+    "source": {
+      "kind": "youtube",
+      "headline": "主要クラウド各社のエージェント基盤、企業導入の壁、ワークフロー自動化の評価軸を20分で整理"
+    },
+    "slides": {
+      "status": "processing",
+      "url": ""
+    },
+    "manga": {
+      "status": "pending",
+      "url": ""
+    },
+    "updatedAt": "2026-06-13T10:30:00.000Z"
+  },
+  {
+    "articleId": "url_b72a901e10",
+    "canonicalUrl": "https://example.com/report",
+    "originalUrl": "https://example.com/report",
+    "title": "週次リサーチまとめ",
+    "source": {
+      "kind": "web",
+      "headline": "半導体、生成AI、宇宙開発、金融政策の注目ニュースをチーム共有向けに要点化"
+    },
+    "slides": {
+      "status": "completed",
+      "url": "https://docs.google.com/presentation/d/1WeeklyResearchDeckId/edit"
+    },
+    "manga": {
+      "status": "failed",
+      "url": ""
+    },
+    "updatedAt": "2026-06-12T21:15:00.000Z"
+  }
+]

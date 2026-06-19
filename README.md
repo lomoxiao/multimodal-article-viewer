@@ -1,0 +1,36 @@
+# multimodal-article-viewer
+
+iPhone/iPad ブラウザ向けの、記事・Google Slides・NotebookLM 漫画導線をまとめる静的Webアプリの初期実装です。
+
+## 使い方
+
+`index.html` をブラウザで開くか、任意の静的サーバーでこのディレクトリを配信します。
+
+```powershell
+cd multimodal-article-viewer
+npm.cmd run dev
+```
+
+## v1 の範囲
+
+- Web/YouTube記事の一覧、検索、種別フィルター
+- iPhoneでは詳細ボトムシート
+- iPad以上では一覧 + 詳細/ビューアの2カラム
+- Google Slidesは既存 `google-slides-speakerdeck-viewer` の閲覧体験を想定したページ移動・サムネイル・スピーカーノート表示
+- 漫画はNotebookLM外部URL遷移
+
+## 入力データ
+
+静的サーバー配信時は `articles.json` を読み込みます。`file://` で直接開いた場合や読み込みに失敗した場合は、`app.js` 内のサンプルデータにフォールバックします。
+
+- `articleId`: 記事の一意ID
+- `canonicalUrl`: 正規化済みの元記事URL
+- `originalUrl`: 投入時のURL
+- `title`: 記事タイトル
+- `source.kind`: `web` または `youtube`
+- `source.headline`: 一覧/詳細に表示するヘッドライン
+- `slides.status`: Google Slides生成状態
+- `slides.url`: Google Slides URL
+- `manga.status`: NotebookLM/漫画生成状態
+- `manga.url`: NotebookLM外部URL
+- `updatedAt`: 最終更新日時

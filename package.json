@@ -1,0 +1,10 @@
+{
+  "name": "multimodal-article-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mobile-first viewer for article, Google Slides, and NotebookLM destinations.",
+  "scripts": {
+    "dev": "node dev-server.js",
+    "check": "node --check app.js && node --check dev-server.js"
+  }
+}
