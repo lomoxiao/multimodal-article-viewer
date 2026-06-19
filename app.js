@@ -68,7 +68,35 @@ const state = {
   query: "",
   selectedId: null,
   currentSlideIndex: 0,
-  viewerPages: []
+  viewerPages: [],
+  currentPresentationId: "",
+  pageCount: 0,
+  pageWindowRequests: {}
+};
+
+const apiClient = {
+  getConfig() {
+    return window.MULTIMODAL_VIEWER_CONFIG || {};
+  },
+
+  hasApiUrl() {
+    return Boolean(this.getConfig().GAS_API_URL);
+  },
+
+  get(action, params = {}) {
+    const config = this.getConfig();
+    const url = new URL(config.GAS_API_URL);
+    url.searchParams.set("action", action);
+    if (config.CLIENT_KEY) {
+      url.searchParams.set("clientKey", config.CLIENT_KEY);
+    }
+    Object.keys(params).forEach((key) => {
+      if (params[key] !== undefined && params[key] !== null) {
+        url.searchParams.set(key, String(params[key]));
+      }
+    });
+    return fetch(url.toString(), { method: "GET" }).then(parseApiResponse);
+  }
 };
 
 const els = {
@@ -251,8 +279,12 @@ function showDetail(article, options = {}) {
 }
 
 function openSlidesViewer(article) {
-  state.viewerPages = createViewerPages(article);
+  const presentationId = extractPresentationId(article.slides.url);
+  state.currentPresentationId = presentationId;
+  state.viewerPages = createViewerPlaceholders(article, presentationId);
   state.currentSlideIndex = 0;
+  state.pageCount = state.viewerPages.length;
+  state.pageWindowRequests = {};
   els.detailPanel.hidden = true;
   els.emptyWorkspace.hidden = true;
   els.slidesViewer.hidden = false;
@@ -263,25 +295,23 @@ function openSlidesViewer(article) {
   els.openSlidesExternal.href = article.slides.url;
   renderThumbnails();
   setSlideIndex(0);
+  loadSlidePageWindow(0, getInitialPageCount());
 }
 
-function createViewerPages(article) {
-  const presentationId = extractPresentationId(article.slides.url);
+function createViewerPlaceholders(article, presentationId) {
   const previewUrl = presentationId ? createSlidesPreviewUrl(presentationId) : "";
-  const baseNotes = [
-    previewUrl
-      ? "Google Slides のプレビューを表示しています。閲覧できない場合は共有設定を確認するか、外部で開いてください。"
-      : "Google Slides URL から presentationId を抽出できませんでした。外部で開く操作を使ってください。",
-    "このビューは google-slides-speakerdeck-viewer と同じく、スライドを大きく読み、ノートを横で確認する構成に寄せています。",
-    "下部のサムネイルと左右ボタンで閲覧位置を切り替えられます。",
-    "外部で開く操作からGoogle Slides本体にも移動できます。"
-  ];
-  return baseNotes.map((note, index) => ({
+  return Array.from({ length: 1 }, (_, index) => ({
     pageNumber: index + 1,
-    title: index === 0 ? article.title : `${article.title} ${index + 1}`,
+    title: article.title,
     subtitle: presentationId ? `presentationId: ${presentationId}` : "Google Slides URL",
-    speakerNote: note,
-    previewUrl
+    speakerNote: presentationId
+      ? "ページ画像とspeaker notesを読み込んでいます。"
+      : "Google Slides URL から presentationId を抽出できませんでした。外部で開く操作を使ってください。",
+    hasSpeakerNote: false,
+    imageUrl: "",
+    previewUrl,
+    isLoaded: false,
+    isLoading: Boolean(presentationId)
   }));
 }
 
@@ -289,20 +319,39 @@ function setSlideIndex(nextIndex) {
   if (!state.viewerPages.length) return;
   const max = state.viewerPages.length - 1;
   state.currentSlideIndex = Math.max(0, Math.min(max, nextIndex));
+  loadSlidePageWindow(state.currentSlideIndex, getInitialPageCount());
+  renderSlidesViewer();
+}
+
+function renderSlidesViewer() {
+  if (!state.viewerPages.length) return;
   const page = state.viewerPages[state.currentSlideIndex];
-  els.slideFrame.innerHTML = page.previewUrl
-    ? `<iframe class="slides-embed" src="${escapeHtml(page.previewUrl)}" title="${escapeHtml(page.title)}" allowfullscreen></iframe>`
-    : `
+  if (page.imageUrl) {
+    els.slideFrame.innerHTML = `<img class="slide-image" src="${escapeHtml(page.imageUrl)}" alt="${escapeHtml(page.title)} page ${page.pageNumber}">`;
+  } else if (page.isLoading) {
+    els.slideFrame.innerHTML = `
+      <div class="viewer-message">
+        <strong>ページを読み込んでいます</strong>
+        <span>Google Slides APIからスライド画像とspeaker notesを取得しています。</span>
+      </div>
+    `;
+  } else if (page.previewUrl) {
+    els.slideFrame.innerHTML = `<iframe class="slides-embed" src="${escapeHtml(page.previewUrl)}" title="${escapeHtml(page.title)}" allowfullscreen></iframe>`;
+  } else {
+    els.slideFrame.innerHTML = `
       <div class="slide-card-preview">
         <strong>${escapeHtml(page.title)}</strong>
         <span>${escapeHtml(page.subtitle)}</span>
         <span>Page ${page.pageNumber}</span>
       </div>
     `;
-  els.slideCounter.textContent = `${page.pageNumber} / ${state.viewerPages.length}`;
-  els.speakerNoteContent.textContent = page.speakerNote;
+  }
+
+  const total = state.pageCount || state.viewerPages.length;
+  els.slideCounter.textContent = `Page ${page.pageNumber} / ${total}`;
+  els.speakerNoteContent.textContent = getSpeakerNoteText(page);
   els.prevSlideButton.disabled = state.currentSlideIndex === 0;
-  els.nextSlideButton.disabled = state.currentSlideIndex === max;
+  els.nextSlideButton.disabled = state.currentSlideIndex >= total - 1;
   renderThumbnails();
 }
 
@@ -312,10 +361,122 @@ function renderThumbnails() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `thumbnail-button${index === state.currentSlideIndex ? " is-active" : ""}`;
-    button.textContent = `Page ${page.pageNumber}`;
+    button.innerHTML = page.imageUrl
+      ? `<img src="${escapeHtml(page.imageUrl)}" alt="Page ${page.pageNumber}">`
+      : `<span>Page ${page.pageNumber}</span>`;
     button.setAttribute("aria-label", `Page ${page.pageNumber}`);
     button.addEventListener("click", () => setSlideIndex(index));
     els.thumbnailStrip.appendChild(button);
+  });
+}
+
+function loadSlidePageWindow(startIndex, count) {
+  if (!state.currentPresentationId || !apiClient.hasApiUrl()) return;
+  const safeStart = Math.max(0, startIndex);
+  const requestKey = `${state.currentPresentationId}:${safeStart}:${count}`;
+  if (state.pageWindowRequests[requestKey]) return;
+  const alreadyLoaded = state.viewerPages
+    .slice(safeStart, safeStart + count)
+    .every((page) => page && page.isLoaded);
+  if (alreadyLoaded) return;
+
+  markPagesLoading(safeStart, count);
+  state.pageWindowRequests[requestKey] = true;
+  apiClient.get("getPageWindow", {
+    presentationId: state.currentPresentationId,
+    startIndex: safeStart,
+    count
+  })
+    .then((result) => {
+      delete state.pageWindowRequests[requestKey];
+      mergeSlidePageWindow(result);
+      renderSlidesViewer();
+    })
+    .catch(() => {
+      delete state.pageWindowRequests[requestKey];
+      markPagesLoadFailed(safeStart, count);
+      renderSlidesViewer();
+    });
+}
+
+function mergeSlidePageWindow(result) {
+  if (!result || !Array.isArray(result.pages)) return;
+  state.pageCount = Number(result.pageCount || state.pageCount || result.pages.length || 0);
+  ensureViewerPageCount(state.pageCount);
+
+  result.pages.forEach((incoming, offset) => {
+    const index = Number(result.startIndex || 0) + offset;
+    state.viewerPages[index] = {
+      ...state.viewerPages[index],
+      ...incoming,
+      isLoaded: true,
+      isLoading: false,
+      previewUrl: ""
+    };
+  });
+}
+
+function ensureViewerPageCount(count) {
+  const total = Math.max(1, Number(count || 0));
+  const article = getSelectedArticle();
+  while (state.viewerPages.length < total) {
+    const index = state.viewerPages.length;
+    state.viewerPages.push({
+      pageNumber: index + 1,
+      title: article.title,
+      subtitle: state.currentPresentationId ? `presentationId: ${state.currentPresentationId}` : "Google Slides URL",
+      speakerNote: "ページ読み込み後に表示します。",
+      hasSpeakerNote: false,
+      imageUrl: "",
+      previewUrl: "",
+      isLoaded: false,
+      isLoading: false
+    });
+  }
+}
+
+function markPagesLoading(startIndex, count) {
+  ensureViewerPageCount(Math.max(state.viewerPages.length, startIndex + count));
+  for (let index = startIndex; index < startIndex + count; index += 1) {
+    if (state.viewerPages[index] && !state.viewerPages[index].isLoaded) {
+      state.viewerPages[index].isLoading = true;
+    }
+  }
+}
+
+function markPagesLoadFailed(startIndex, count) {
+  for (let index = startIndex; index < startIndex + count; index += 1) {
+    if (state.viewerPages[index] && !state.viewerPages[index].isLoaded) {
+      state.viewerPages[index].isLoading = false;
+      state.viewerPages[index].speakerNote = "ページを読み込めなかったため、speaker notesを表示できません。";
+    }
+  }
+}
+
+function getSpeakerNoteText(page) {
+  if (!page) return "";
+  if (page.hasSpeakerNote) return page.speakerNote || "";
+  if (page.isLoading) return "ページ読み込み後に表示します。";
+  return page.speakerNote || "このページにはspeaker notesがありません。";
+}
+
+function getInitialPageCount() {
+  const config = apiClient.getConfig();
+  return Math.max(1, Number(config.INITIAL_PAGE_COUNT || 3));
+}
+
+function parseApiResponse(response) {
+  if (!response.ok) {
+    throw new Error(`API request failed: HTTP ${response.status}`);
+  }
+  return response.json().then((result) => {
+    if (!result || !result.ok) {
+      const message = result && result.error && result.error.message
+        ? result.error.message
+        : "API request failed.";
+      throw new Error(message);
+    }
+    return result.data;
   });
 }
 

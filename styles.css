@@ -480,6 +480,27 @@ body.sheet-open {
   background: #fff;
 }
 
+.slide-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+
+.viewer-message {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  color: var(--ink);
+  text-align: center;
+}
+
+.viewer-message span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .slide-card-preview {
   width: 100%;
   height: 100%;
@@ -550,6 +571,9 @@ body.sheet-open {
 .thumbnail-button {
   flex: 0 0 118px;
   aspect-ratio: 16 / 10;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
   border: 2px solid transparent;
   border-radius: 6px;
   background:
@@ -558,6 +582,12 @@ body.sheet-open {
   font-size: 12px;
   font-weight: 800;
   box-shadow: 0 10px 24px rgba(31, 35, 40, 0.07);
+}
+
+.thumbnail-button img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .thumbnail-button.is-active {
