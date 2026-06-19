@@ -272,8 +272,8 @@ function createViewerPages(article) {
     previewUrl
       ? "Google Slides のプレビューを表示しています。閲覧できない場合は共有設定を確認するか、外部で開いてください。"
       : "Google Slides URL から presentationId を抽出できませんでした。外部で開く操作を使ってください。",
-    "将来は google-slides-speakerdeck-viewer と同じくページ画像、サムネイル、スピーカーノート取得に差し替えます。",
-    "iPadでは一覧を左に残し、右側でスライドとノートを同時に確認できます。",
+    "このビューは google-slides-speakerdeck-viewer と同じく、スライドを大きく読み、ノートを横で確認する構成に寄せています。",
+    "下部のサムネイルと左右ボタンで閲覧位置を切り替えられます。",
     "外部で開く操作からGoogle Slides本体にも移動できます。"
   ];
   return baseNotes.map((note, index) => ({
@@ -281,7 +281,7 @@ function createViewerPages(article) {
     title: index === 0 ? article.title : `${article.title} ${index + 1}`,
     subtitle: presentationId ? `presentationId: ${presentationId}` : "Google Slides URL",
     speakerNote: note,
-    previewUrl: index === 0 ? previewUrl : ""
+    previewUrl
   }));
 }
 
@@ -312,7 +312,7 @@ function renderThumbnails() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `thumbnail-button${index === state.currentSlideIndex ? " is-active" : ""}`;
-    button.textContent = page.pageNumber;
+    button.textContent = `Page ${page.pageNumber}`;
     button.setAttribute("aria-label", `Page ${page.pageNumber}`);
     button.addEventListener("click", () => setSlideIndex(index));
     els.thumbnailStrip.appendChild(button);

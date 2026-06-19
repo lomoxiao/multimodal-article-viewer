@@ -54,26 +54,25 @@
 
       <section id="slidesViewer" class="slides-viewer" aria-label="Google Slides viewer" hidden>
         <header class="slides-head">
-          <button id="backToDetailButton" class="icon-button" type="button" aria-label="詳細へ戻る">‹</button>
+          <button id="backToDetailButton" class="viewer-pill" type="button">戻る</button>
           <div>
-            <p class="eyebrow">Google Slides</p>
             <h2 id="slidesTitle"></h2>
+            <p id="slideCounter"></p>
           </div>
-          <a id="openSlidesExternal" class="icon-link" target="_blank" rel="noopener" aria-label="Google Slidesを外部で開く">↗</a>
+          <a id="openSlidesExternal" class="viewer-pill" target="_blank" rel="noopener">外部で開く</a>
         </header>
         <div class="slides-layout">
-          <div class="slide-stage">
-            <div id="slideFrame" class="slide-frame"></div>
-            <div class="slide-controls">
-              <button id="prevSlideButton" class="icon-button" type="button" aria-label="前のページ">‹</button>
-              <span id="slideCounter"></span>
-              <button id="nextSlideButton" class="icon-button" type="button" aria-label="次のページ">›</button>
+          <div class="stage-wrap">
+            <div class="slide-stage">
+              <button id="prevSlideButton" class="nav-button nav-prev" type="button" aria-label="前のページ">‹</button>
+              <div id="slideFrame" class="slide-frame"></div>
+              <button id="nextSlideButton" class="nav-button nav-next" type="button" aria-label="次のページ">›</button>
             </div>
+            <div id="thumbnailStrip" class="thumbnail-strip" aria-label="ページ一覧"></div>
           </div>
           <aside class="speaker-notes" aria-label="Speaker notes">
             <h3>Speaker Notes</h3>
             <p id="speakerNoteContent"></p>
-            <div id="thumbnailStrip" class="thumbnail-strip" aria-label="ページ一覧"></div>
           </aside>
         </div>
       </section>
