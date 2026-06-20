@@ -1,12 +1,12 @@
 [
   {
     "articleId": "url_a8f31c9d4e21b7aa",
-    "canonicalUrl": "https://example.com/article",
-    "originalUrl": "https://example.com/article?utm_source=twitter",
-    "title": "記事タイトル",
+    "canonicalUrl": "https://youtu.be/chkfptSSepA",
+    "originalUrl": "https://youtu.be/chkfptSSepA",
+    "title": "GBBのはじまり",
     "source": {
-      "kind": "web",
-      "headline": "AnthropicがFable 5・Mythos 5を米政府輸出管理指令で全面停止・史上初・SpaceX上場時価総額1.75兆ドル・G7エヴィアン明日15日開幕・トランプ・イラン合意署名・日経平均66,020円"
+      "kind": "youtube",
+      "headline": "ビートボックスの世界大会、GBBってどうやって生まれたの？始まりから歴史を紐解いてみた！ | 日本一が教えるヒューマンビートボックス講座"
     },
     "slides": {
       "status": "completed",
@@ -20,20 +20,20 @@
   },
   {
     "articleId": "yt_c12b8d4429",
-    "canonicalUrl": "https://www.youtube.com/watch?v=example",
-    "originalUrl": "https://youtu.be/example",
-    "title": "AIエージェント市場の最新動向",
+    "canonicalUrl": "https://note.com/fantasy_travel/n/na2ca8cc46116",
+    "originalUrl": "https://note.com/fantasy_travel/n/na2ca8cc46116",
+    "title": "Substackで使ったら想像以上に便利だった",
     "source": {
-      "kind": "youtube",
-      "headline": "主要クラウド各社のエージェント基盤、企業導入の壁、ワークフロー自動化の評価軸を20分で整理"
+      "kind": "web",
+      "headline": "Geminiって皆さん使ってますか？ わたしはAntigravityのために一応有料プランに課金してますが、正直 ChatGPTやClaudeに比べて回答の質が良くない"
     },
     "slides": {
-      "status": "processing",
-      "url": ""
+      "status": "completed",
+      "url": "https://docs.google.com/presentation/d/1lMIoBAbLFFv30vJw9resGB38FJIUzdVgHCbbiAlopRc/edit"
     },
     "manga": {
-      "status": "pending",
-      "url": ""
+      "status": "completed",
+      "url": "https://notebooklm.google.com/notebook/fbd5594f-519d-4d50-86ad-9beea8cc92ed/artifact/199f713a-3e40-4fc1-9073-267acb6917bd?utm_source=nlm_web_share&utm_medium=google_oo&utm_campaign=art_share_2&utm_content=&utm_smc=nlm_web_share_google_oo_art_share_2_"
     },
     "updatedAt": "2026-06-13T10:30:00.000Z"
   },
