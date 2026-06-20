@@ -741,6 +741,8 @@ function handleViewerTouchEnd(event) {
   const startTarget = state.viewerTouchStartTarget;
   const dx = event.changedTouches[0].clientX - state.viewerTouchStartX;
   const dy = event.changedTouches[0].clientY - state.viewerTouchStartY;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
   state.viewerTouchStartX = null;
   state.viewerTouchStartY = null;
   state.viewerTouchStartTarget = null;
@@ -749,13 +751,13 @@ function handleViewerTouchEnd(event) {
     wakeViewerControls();
     return;
   }
-  if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) {
+  if (dy > 40 && absDy > absDx) {
     wakeViewerControls();
     return;
   }
+  if (absDx < 40 || absDx < absDy) return;
   if (dx < 0) setSlideIndex(state.currentSlideIndex + 1);
   if (dx > 0) setSlideIndex(state.currentSlideIndex - 1);
-  wakeViewerControls();
 }
 
 function openExternal(url) {
