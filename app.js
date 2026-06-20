@@ -71,7 +71,13 @@ const state = {
   viewerPages: [],
   currentPresentationId: "",
   pageCount: 0,
-  pageWindowRequests: {}
+  pageWindowRequests: {},
+  fullscreenRequestId: 0,
+  controlsIdleTimer: null,
+  viewerTouchStartX: null,
+  viewerTouchStartY: null,
+  viewerTouchStartTarget: null,
+  isAutoImmersive: false
 };
 
 const apiClient = {
@@ -116,6 +122,7 @@ const els = {
   slidesViewer: document.getElementById("slidesViewer"),
   slidesTitle: document.getElementById("slidesTitle"),
   openSlidesExternal: document.getElementById("openSlidesExternal"),
+  fullscreenButton: document.getElementById("fullscreenButton"),
   slideFrame: document.getElementById("slideFrame"),
   slideCounter: document.getElementById("slideCounter"),
   prevSlideButton: document.getElementById("prevSlideButton"),
@@ -148,9 +155,41 @@ async function init() {
 
   els.closeDetailButton.addEventListener("click", closeMobileWorkspace);
   els.sheetBackdrop.addEventListener("click", closeMobileWorkspace);
-  els.backToDetailButton.addEventListener("click", () => showDetail(getSelectedArticle(), { keepSheet: true }));
+  els.backToDetailButton.addEventListener("click", returnFromSlidesViewer);
+  els.fullscreenButton.addEventListener("click", toggleViewerFullscreen);
   els.prevSlideButton.addEventListener("click", () => setSlideIndex(state.currentSlideIndex - 1));
   els.nextSlideButton.addEventListener("click", () => setSlideIndex(state.currentSlideIndex + 1));
+  els.slidesViewer.addEventListener("touchstart", handleViewerTouchStart, { passive: true });
+  els.slidesViewer.addEventListener("touchend", handleViewerTouchEnd, { passive: true });
+  ["click", "mousemove"].forEach((eventName) => {
+    els.slidesViewer.addEventListener(eventName, () => {
+      if (eventName === "click" && isCoarsePointer()) return;
+      wakeViewerControls();
+    }, { passive: true });
+  });
+
+  document.addEventListener("fullscreenchange", handleFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+  document.addEventListener("fullscreenerror", handleFullscreenError);
+  document.addEventListener("webkitfullscreenerror", handleFullscreenError);
+  window.addEventListener("orientationchange", handleViewportChange);
+  window.addEventListener("resize", handleViewportChange);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", handleViewportChange);
+  }
+  document.addEventListener("keydown", (event) => {
+    if (els.slidesViewer.hidden) return;
+    if (event.key === "ArrowRight") setSlideIndex(state.currentSlideIndex + 1);
+    if (event.key === "ArrowLeft") setSlideIndex(state.currentSlideIndex - 1);
+    if (event.key === "Escape") {
+      if (isViewerImmersive()) {
+        exitViewerFullscreen();
+      } else {
+        returnFromSlidesViewer();
+      }
+    }
+    wakeViewerControls();
+  });
 
   renderList();
   if (articles.length) {
@@ -224,6 +263,8 @@ function getSelectedArticle() {
 
 function showDetail(article, options = {}) {
   if (!article) return;
+  exitViewerFullscreen();
+  document.body.classList.remove("slides-viewer-open");
   els.emptyWorkspace.hidden = true;
   els.slidesViewer.hidden = true;
   els.detailPanel.hidden = false;
@@ -289,13 +330,15 @@ function openSlidesViewer(article) {
   els.emptyWorkspace.hidden = true;
   els.slidesViewer.hidden = false;
   els.workspacePane.classList.add("has-mobile-detail");
-  document.body.classList.add("sheet-open");
+  document.body.classList.add("sheet-open", "slides-viewer-open");
   els.sheetBackdrop.hidden = true;
   els.slidesTitle.textContent = article.title;
   els.openSlidesExternal.href = article.slides.url;
   renderThumbnails();
   setSlideIndex(0);
   loadSlidePageWindow(0, getInitialPageCount());
+  updateViewerViewportHeight();
+  applyAutoImmersiveMode();
 }
 
 function createViewerPlaceholders(article, presentationId) {
@@ -482,8 +525,237 @@ function parseApiResponse(response) {
 
 function closeMobileWorkspace() {
   els.workspacePane.classList.remove("has-mobile-detail");
-  document.body.classList.remove("sheet-open");
+  document.body.classList.remove("sheet-open", "slides-viewer-open");
   els.sheetBackdrop.hidden = true;
+  exitViewerFullscreen();
+}
+
+function returnFromSlidesViewer() {
+  exitViewerFullscreen();
+  showDetail(getSelectedArticle(), { keepSheet: true });
+}
+
+function toggleViewerFullscreen() {
+  if (getFullscreenElement() || isViewerImmersive()) {
+    state.isAutoImmersive = false;
+    exitViewerFullscreen();
+    return;
+  }
+
+  state.fullscreenRequestId += 1;
+  const requestId = state.fullscreenRequestId;
+  enterViewerImmersive({ auto: false, wakeControls: true });
+
+  const requestFullscreen = els.slidesViewer.requestFullscreen ||
+    els.slidesViewer.webkitRequestFullscreen ||
+    els.slidesViewer.webkitRequestFullScreen ||
+    els.slidesViewer.msRequestFullscreen;
+
+  if (!requestFullscreen) {
+    markFullscreenUnavailable();
+    return;
+  }
+
+  try {
+    const result = requestFullscreen.call(els.slidesViewer, { navigationUI: "hide" });
+    if (result && result.catch) {
+      result
+        .then(() => {
+          if (requestId !== state.fullscreenRequestId) return;
+          document.body.classList.add("viewer-native-fullscreen");
+          document.body.classList.remove("viewer-fullscreen-unavailable");
+          syncFullscreenButton();
+        })
+        .catch(markFullscreenUnavailable);
+    } else {
+      window.setTimeout(() => {
+        if (requestId !== state.fullscreenRequestId) return;
+        if (getFullscreenElement()) {
+          document.body.classList.add("viewer-native-fullscreen");
+          document.body.classList.remove("viewer-fullscreen-unavailable");
+        } else {
+          markFullscreenUnavailable();
+        }
+        syncFullscreenButton();
+      }, 350);
+    }
+  } catch {
+    markFullscreenUnavailable();
+  }
+}
+
+function enterViewerImmersive(options = {}) {
+  state.isAutoImmersive = Boolean(options.auto);
+  document.body.classList.add("viewer-immersive");
+  document.body.classList.remove("viewer-fullscreen-unavailable");
+  updateViewerViewportHeight();
+  syncFullscreenButton();
+  if (options.wakeControls) {
+    wakeViewerControls();
+  } else {
+    document.body.classList.add("viewer-controls-idle");
+  }
+}
+
+function exitViewerFullscreen() {
+  state.fullscreenRequestId += 1;
+  state.isAutoImmersive = false;
+  clearViewerControlsTimer();
+  document.body.classList.remove(
+    "viewer-immersive",
+    "viewer-native-fullscreen",
+    "viewer-fullscreen-unavailable",
+    "viewer-controls-idle"
+  );
+
+  const fullscreenElement = getFullscreenElement();
+  const exitFullscreen = document.exitFullscreen ||
+    document.webkitExitFullscreen ||
+    document.webkitCancelFullScreen ||
+    document.msExitFullscreen;
+  if (fullscreenElement && exitFullscreen) {
+    try {
+      const result = exitFullscreen.call(document);
+      if (result && result.catch) result.catch(() => {});
+    } catch {}
+  }
+  syncFullscreenButton();
+}
+
+function handleFullscreenChange() {
+  const isNativeFullscreen = Boolean(getFullscreenElement());
+  document.body.classList.toggle("viewer-native-fullscreen", isNativeFullscreen);
+  if (isViewerImmersive() && isNativeFullscreen) {
+    document.body.classList.remove("viewer-fullscreen-unavailable");
+  }
+  updateViewerViewportHeight();
+  syncFullscreenButton();
+}
+
+function handleFullscreenError() {
+  markFullscreenUnavailable();
+}
+
+function markFullscreenUnavailable() {
+  document.body.classList.add("viewer-fullscreen-unavailable");
+  document.body.classList.remove("viewer-native-fullscreen");
+  syncFullscreenButton();
+}
+
+function handleViewportChange() {
+  updateViewerViewportHeight();
+  applyAutoImmersiveMode();
+}
+
+function applyAutoImmersiveMode() {
+  if (shouldAutoEnterImmersive()) {
+    if (!isViewerImmersive()) {
+      enterViewerImmersive({ auto: true, wakeControls: false });
+    }
+    return;
+  }
+
+  if (state.isAutoImmersive && isViewerImmersive()) {
+    exitViewerFullscreen();
+  }
+}
+
+function shouldAutoEnterImmersive() {
+  return Boolean(
+    !els.slidesViewer.hidden &&
+    isCoarsePointer() &&
+    isLandscapeViewport() &&
+    isMobileViewport()
+  );
+}
+
+function updateViewerViewportHeight() {
+  const height = window.visualViewport && window.visualViewport.height
+    ? window.visualViewport.height
+    : window.innerHeight;
+  document.documentElement.style.setProperty("--viewer-height", `${Math.max(1, Math.round(height))}px`);
+}
+
+function getFullscreenElement() {
+  return document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    document.webkitFullScreenElement ||
+    document.msFullscreenElement ||
+    null;
+}
+
+function isViewerImmersive() {
+  return document.body.classList.contains("viewer-immersive");
+}
+
+function isLandscapeViewport() {
+  const width = window.visualViewport && window.visualViewport.width
+    ? window.visualViewport.width
+    : window.innerWidth;
+  const height = window.visualViewport && window.visualViewport.height
+    ? window.visualViewport.height
+    : window.innerHeight;
+  return width > height;
+}
+
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 767px)").matches;
+}
+
+function isCoarsePointer() {
+  return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+}
+
+function syncFullscreenButton() {
+  const active = isViewerImmersive() || Boolean(getFullscreenElement());
+  els.fullscreenButton.textContent = active ? "解除" : "全画面";
+  els.fullscreenButton.setAttribute("aria-pressed", active ? "true" : "false");
+}
+
+function wakeViewerControls() {
+  if (!isViewerImmersive()) return;
+  document.body.classList.remove("viewer-controls-idle");
+  clearViewerControlsTimer();
+  state.controlsIdleTimer = window.setTimeout(() => {
+    if (isViewerImmersive()) {
+      document.body.classList.add("viewer-controls-idle");
+    }
+  }, 2200);
+}
+
+function clearViewerControlsTimer() {
+  if (!state.controlsIdleTimer) return;
+  window.clearTimeout(state.controlsIdleTimer);
+  state.controlsIdleTimer = null;
+}
+
+function handleViewerTouchStart(event) {
+  if (els.slidesViewer.hidden || !event.changedTouches.length) return;
+  state.viewerTouchStartX = event.changedTouches[0].clientX;
+  state.viewerTouchStartY = event.changedTouches[0].clientY;
+  state.viewerTouchStartTarget = event.target;
+}
+
+function handleViewerTouchEnd(event) {
+  if (els.slidesViewer.hidden || state.viewerTouchStartX === null || !event.changedTouches.length) return;
+  const startTarget = state.viewerTouchStartTarget;
+  const dx = event.changedTouches[0].clientX - state.viewerTouchStartX;
+  const dy = event.changedTouches[0].clientY - state.viewerTouchStartY;
+  state.viewerTouchStartX = null;
+  state.viewerTouchStartY = null;
+  state.viewerTouchStartTarget = null;
+
+  if (startTarget && startTarget.closest && startTarget.closest("button, a, .thumbnail-strip, .speaker-notes")) {
+    wakeViewerControls();
+    return;
+  }
+  if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) {
+    wakeViewerControls();
+    return;
+  }
+  if (dx < 0) setSlideIndex(state.currentSlideIndex + 1);
+  if (dx > 0) setSlideIndex(state.currentSlideIndex - 1);
+  wakeViewerControls();
 }
 
 function openExternal(url) {

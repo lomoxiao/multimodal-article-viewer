@@ -375,6 +375,10 @@ body.sheet-open {
   overflow: hidden;
 }
 
+body.slides-viewer-open {
+  overflow: hidden;
+}
+
 .mobile-only {
   display: inline-grid;
 }
@@ -409,6 +413,12 @@ body.sheet-open {
   text-align: center;
 }
 
+.slides-head-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: end;
+}
+
 .slides-head h2 {
   font-size: clamp(22px, 3.6vw, 36px);
   line-height: 1.12;
@@ -440,6 +450,7 @@ body.sheet-open {
   display: grid;
   gap: 18px;
   min-height: 0;
+  overflow: hidden;
 }
 
 .stage-wrap {
@@ -542,10 +553,12 @@ body.sheet-open {
 
 .speaker-notes {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   align-content: start;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   padding: 22px;
   border: 1px solid rgba(203, 208, 216, 0.84);
   border-radius: 8px;
@@ -557,6 +570,8 @@ body.sheet-open {
   color: var(--muted);
   font-size: 15px;
   line-height: 1.75;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .thumbnail-strip {
@@ -627,6 +642,29 @@ body.sheet-open {
     box-shadow: var(--shadow);
   }
 
+  body.slides-viewer-open .workspace-pane {
+    inset: 0;
+    z-index: 12;
+    display: block;
+    pointer-events: auto;
+  }
+
+  body.slides-viewer-open .workspace-pane > * {
+    display: none;
+  }
+
+  body.slides-viewer-open .workspace-pane #slidesViewer:not([hidden]) {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    max-height: none;
+    width: 100%;
+    height: var(--viewer-height, 100svh);
+    overflow: hidden;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
   .slides-viewer {
     border-radius: 8px 8px 0 0;
     padding: 12px;
@@ -635,6 +673,7 @@ body.sheet-open {
   .slides-head {
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 8px;
+    align-items: start;
   }
 
   .slides-head h2 {
@@ -652,13 +691,30 @@ body.sheet-open {
     font-size: 13px;
   }
 
+  .slides-head-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
   .slides-layout {
-    grid-template-rows: minmax(0, auto) auto;
+    grid-template-rows: minmax(0, 1fr) minmax(118px, 30%);
     gap: 12px;
+  }
+
+  .stage-wrap {
+    grid-template-rows: minmax(0, 1fr) 72px;
+    gap: 10px;
   }
 
   .slide-stage {
     grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .slide-frame {
+    align-self: center;
+    max-height: 100%;
   }
 
   .nav-button {
@@ -683,6 +739,11 @@ body.sheet-open {
 
   .speaker-notes {
     padding: 14px;
+  }
+
+  .speaker-notes p {
+    font-size: 14px;
+    line-height: 1.65;
   }
 }
 
@@ -722,6 +783,158 @@ body.sheet-open {
   .slides-layout {
     grid-template-columns: minmax(0, 1fr) minmax(240px, 30vw);
     align-items: stretch;
+  }
+}
+
+body.viewer-immersive .slides-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  width: 100%;
+  height: var(--viewer-height, 100vh);
+  padding: 10px;
+  border-radius: 0;
+  background: #101010;
+  color: #fff;
+}
+
+body.viewer-immersive .slides-head {
+  position: fixed;
+  left: calc(10px + env(safe-area-inset-left, 0px));
+  right: calc(10px + env(safe-area-inset-right, 0px));
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  z-index: 24;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(14px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+body.viewer-immersive .slides-head h2 {
+  display: none;
+}
+
+body.viewer-immersive .slides-head p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+body.viewer-immersive .viewer-pill,
+body.viewer-immersive .nav-button {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.46);
+  color: #fff;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(12px);
+}
+
+body.viewer-immersive .slides-layout {
+  height: 100%;
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 54%) minmax(0, 46%);
+  gap: 8px;
+}
+
+body.viewer-immersive .stage-wrap {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+body.viewer-immersive .thumbnail-strip {
+  display: none;
+}
+
+body.viewer-immersive .slide-stage {
+  grid-template-columns: 1fr;
+}
+
+body.viewer-immersive .slide-frame {
+  height: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+  border-radius: 0;
+  border: 0;
+  box-shadow: none;
+  background: #000;
+}
+
+body.viewer-immersive .nav-button {
+  position: fixed;
+  bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+  z-index: 24;
+  width: 44px;
+  height: 44px;
+  font-size: 26px;
+}
+
+body.viewer-immersive .nav-prev {
+  left: 50%;
+  transform: translateX(-58px);
+}
+
+body.viewer-immersive .nav-next {
+  left: 50%;
+  right: auto;
+  transform: translateX(14px);
+}
+
+body.viewer-immersive .speaker-notes {
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+  padding: 12px 12px calc(112px + env(safe-area-inset-bottom, 0px));
+  border: 0;
+  border-radius: 0;
+  background: #101010;
+  color: #fff;
+}
+
+body.viewer-immersive .speaker-notes h3 {
+  color: #fff;
+  font-size: 13px;
+}
+
+body.viewer-immersive .speaker-notes p {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+body.viewer-controls-idle.viewer-immersive .slides-head,
+body.viewer-controls-idle.viewer-immersive .nav-button {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+}
+
+body.viewer-controls-idle.viewer-immersive .nav-prev {
+  transform: translate(-58px, 8px);
+}
+
+body.viewer-controls-idle.viewer-immersive .nav-next {
+  transform: translate(14px, 8px);
+}
+
+@media (hover: none) and (pointer: coarse) and (max-width: 1180px) and (orientation: landscape) {
+  body.viewer-immersive .slides-layout {
+    grid-template-columns: minmax(0, 76%) minmax(0, 24%);
+    grid-template-rows: 1fr;
+    gap: 6px;
+  }
+
+  body.viewer-immersive .speaker-notes {
+    padding: 10px 10px calc(62px + env(safe-area-inset-bottom, 0px));
+  }
+
+  body.viewer-immersive .speaker-notes h3 {
+    font-size: 12px;
+  }
+
+  body.viewer-immersive .speaker-notes p {
+    font-size: 12px;
+    line-height: 1.5;
   }
 }
 
