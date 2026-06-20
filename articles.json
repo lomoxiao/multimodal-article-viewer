@@ -55,5 +55,43 @@
       "url": ""
     },
     "updatedAt": "2026-06-12T21:15:00.000Z"
+  },
+  {
+    "articleId": "url_c4c5566bf9b8",
+    "canonicalUrl": "https://www.businesswire.com/news/home/20260618161261/ja",
+    "originalUrl": "https://www.businesswire.com/news/home/20260618161261/ja",
+    "title": "www.businesswire.com",
+    "source": {
+      "kind": "web",
+      "headline": ""
+    },
+    "slides": {
+      "status": "failed",
+      "url": ""
+    },
+    "manga": {
+      "status": "pending",
+      "url": ""
+    },
+    "updatedAt": "2026-06-20T07:04:37.808Z"
+  },
+  {
+    "articleId": "url_bf1c903764fa",
+    "canonicalUrl": "https://note.com/redcord/n/nc92825f965c9",
+    "originalUrl": "https://note.com/redcord/n/nc92825f965c9",
+    "title": "AI速報で読むプラットフォーム競争",
+    "source": {
+      "kind": "web",
+      "headline": "本資料は、記事内で紹介された六月十八日前後のAI関連ニュースをもとに、主要トピックと業界トレンドを短時間で把握するための要約です。個別ニュースの事実確認ではなく、記事内容から読み取れる流れを整理します。"
+    },
+    "slides": {
+      "status": "completed",
+      "url": "https://docs.google.com/presentation/d/1b0bHyc2HItIg7c3d7x0cqaG2CKPOICCQufU-kE5ZpMo/edit"
+    },
+    "manga": {
+      "status": "pending",
+      "url": ""
+    },
+    "updatedAt": "2026-06-20T07:08:17.591Z"
   }
 ]
