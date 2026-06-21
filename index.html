@@ -15,7 +15,10 @@
           <p class="eyebrow">Multimodal Article Viewer</p>
           <h1 id="appTitle">今日のヘッドライン</h1>
         </div>
-        <span id="articleCount" class="count-pill" aria-live="polite"></span>
+        <div class="app-header-actions">
+          <span id="articleCount" class="count-pill" aria-live="polite"></span>
+          <button id="signOutButton" class="signout-button" type="button" hidden>サインアウト</button>
+        </div>
       </header>
 
       <div class="toolbar" aria-label="記事検索とフィルター">
@@ -84,6 +87,25 @@
 
   <div id="sheetBackdrop" class="sheet-backdrop" hidden></div>
 
+  <div id="authGate" class="auth-gate" hidden>
+    <form id="loginForm" class="auth-card" autocomplete="on">
+      <p class="eyebrow">Multimodal Article Viewer</p>
+      <h2>サインイン</h2>
+      <p class="auth-sub">登録された閲覧者のみアクセスできます。</p>
+      <label class="auth-label" for="loginEmail">メールアドレス
+        <input id="loginEmail" type="email" autocomplete="username" required>
+      </label>
+      <label class="auth-label" for="loginPassword">パスワード
+        <input id="loginPassword" type="password" autocomplete="current-password" required>
+      </label>
+      <button id="loginButton" class="auth-submit" type="submit">ログイン</button>
+      <p id="authError" class="auth-error" role="alert" hidden></p>
+    </form>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
   <script src="config.js"></script>
   <script src="app.js"></script>
 </body>

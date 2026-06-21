@@ -1,66 +1,3 @@
-const fallbackArticles = [
-  {
-    articleId: "url_a8f31c9d4e21b7aa",
-    canonicalUrl: "https://example.com/article",
-    originalUrl: "https://example.com/article?utm_source=twitter",
-    title: "記事タイトル",
-    source: {
-      kind: "web",
-      headline:
-        "AnthropicがFable 5・Mythos 5を米政府輸出管理指令で全面停止・史上初・SpaceX上場時価総額1.75兆ドル・G7エヴィアン明日15日開幕・トランプ・イラン合意署名・日経平均66,020円"
-    },
-    slides: {
-      status: "completed",
-      url: "https://docs.google.com/presentation/d/1ExampleSlidesDeckIdForViewer/edit"
-    },
-    manga: {
-      status: "completed",
-      url: "https://notebooklm.google.com/notebook/example"
-    },
-    updatedAt: "2026-06-14T00:00:00.000Z"
-  },
-  {
-    articleId: "yt_c12b8d4429",
-    canonicalUrl: "https://www.youtube.com/watch?v=example",
-    originalUrl: "https://youtu.be/example",
-    title: "AIエージェント市場の最新動向",
-    source: {
-      kind: "youtube",
-      headline:
-        "主要クラウド各社のエージェント基盤、企業導入の壁、ワークフロー自動化の評価軸を20分で整理"
-    },
-    slides: {
-      status: "processing",
-      url: ""
-    },
-    manga: {
-      status: "pending",
-      url: ""
-    },
-    updatedAt: "2026-06-13T10:30:00.000Z"
-  },
-  {
-    articleId: "url_b72a901e10",
-    canonicalUrl: "https://example.com/report",
-    originalUrl: "https://example.com/report",
-    title: "週次リサーチまとめ",
-    source: {
-      kind: "web",
-      headline:
-        "半導体、生成AI、宇宙開発、金融政策の注目ニュースをチーム共有向けに要点化"
-    },
-    slides: {
-      status: "completed",
-      url: "https://docs.google.com/presentation/d/1WeeklyResearchDeckId/edit"
-    },
-    manga: {
-      status: "failed",
-      url: ""
-    },
-    updatedAt: "2026-06-12T21:15:00.000Z"
-  }
-];
-
 let articles = [];
 
 const state = {
@@ -129,13 +66,17 @@ const els = {
   nextSlideButton: document.getElementById("nextSlideButton"),
   backToDetailButton: document.getElementById("backToDetailButton"),
   speakerNoteContent: document.getElementById("speakerNoteContent"),
-  thumbnailStrip: document.getElementById("thumbnailStrip")
+  thumbnailStrip: document.getElementById("thumbnailStrip"),
+  authGate: document.getElementById("authGate"),
+  loginForm: document.getElementById("loginForm"),
+  loginEmail: document.getElementById("loginEmail"),
+  loginPassword: document.getElementById("loginPassword"),
+  loginButton: document.getElementById("loginButton"),
+  authError: document.getElementById("authError"),
+  signOutButton: document.getElementById("signOutButton")
 };
 
-async function init() {
-  articles = await loadArticles();
-  articles.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-
+function wireUiEvents() {
   els.searchInput.addEventListener("input", (event) => {
     state.query = event.target.value.trim().toLowerCase();
     renderList();
@@ -191,6 +132,20 @@ async function init() {
     wakeViewerControls();
   });
 
+}
+
+async function loadAndRender() {
+  let loaded;
+  try {
+    loaded = await loadArticles();
+  } catch (error) {
+    articles = [];
+    renderList();
+    showDataError(error);
+    return;
+  }
+  articles = loaded;
+  articles.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   renderList();
   if (articles.length) {
     selectArticle(articles[0].articleId, { openSheet: false });
@@ -198,18 +153,37 @@ async function init() {
 }
 
 async function loadArticles() {
-  if (window.location.protocol === "file:") {
-    return fallbackArticles;
-  }
+  const snapshot = await firebase.database().ref("/articles").get();
+  const value = snapshot.val() || {};
+  return Object.values(value).map(normalizeArticle);
+}
 
-  try {
-    const response = await fetch("articles.json", { cache: "no-store" });
-    if (!response.ok) return fallbackArticles;
-    const payload = await response.json();
-    return Array.isArray(payload) ? payload : fallbackArticles;
-  } catch {
-    return fallbackArticles;
-  }
+function normalizeArticle(raw) {
+  const article = raw || {};
+  const source = article.source || {};
+  const slides = article.slides || {};
+  const manga = article.manga || {};
+  return {
+    articleId: article.articleId || article.canonicalUrl || article.originalUrl || "",
+    canonicalUrl: article.canonicalUrl || article.originalUrl || "",
+    originalUrl: article.originalUrl || article.canonicalUrl || "",
+    title: article.title || "",
+    source: {
+      kind: source.kind === "youtube" ? "youtube" : "web",
+      headline: source.headline || ""
+    },
+    slides: { status: slides.status || "pending", url: slides.url || "" },
+    manga: { status: manga.status || "pending", url: manga.url || "" },
+    updatedAt: article.updatedAt || article.registeredAt || ""
+  };
+}
+
+function showDataError(error) {
+  const message = /permission_denied/i.test(String(error && error.message))
+    ? "閲覧権限がありません。管理者に viewer 登録（/access/viewers）を依頼してください。"
+    : "記事の取得に失敗しました。時間をおいて再読み込みしてください。";
+  els.articleCount.textContent = "0件";
+  els.articleList.innerHTML = `<p class="empty-list">${escapeHtml(message)}</p>`;
 }
 
 function renderList() {
@@ -832,4 +806,78 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-init();
+function showAuthGate(message) {
+  els.authGate.hidden = false;
+  els.signOutButton.hidden = true;
+  if (message) {
+    els.authError.textContent = message;
+    els.authError.hidden = false;
+  }
+}
+
+function hideAuthGate() {
+  els.authGate.hidden = true;
+  els.authError.hidden = true;
+  els.signOutButton.hidden = false;
+}
+
+function authErrorMessage(error) {
+  switch (error && error.code) {
+    case "auth/invalid-email":
+    case "auth/missing-password":
+    case "auth/invalid-credential":
+    case "auth/wrong-password":
+    case "auth/user-not-found":
+      return "メールアドレスまたはパスワードが正しくありません。";
+    case "auth/too-many-requests":
+      return "試行回数が多すぎます。しばらくしてから再度お試しください。";
+    case "auth/network-request-failed":
+      return "ネットワークエラーです。接続を確認してください。";
+    default:
+      return "ログインに失敗しました。もう一度お試しください。";
+  }
+}
+
+function setupAuth() {
+  const firebaseConfig = (window.MULTIMODAL_VIEWER_CONFIG || {}).FIREBASE_CONFIG;
+  if (!window.firebase || !firebaseConfig || /^REPLACE_WITH_/.test(firebaseConfig.apiKey || "")) {
+    showAuthGate("Firebase 設定が未完了です。config.js の FIREBASE_CONFIG を設定してください。");
+    return;
+  }
+
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
+
+  els.loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    els.authError.hidden = true;
+    els.loginButton.disabled = true;
+    try {
+      await auth.signInWithEmailAndPassword(els.loginEmail.value.trim(), els.loginPassword.value);
+      // onAuthStateChanged handles the success path.
+    } catch (error) {
+      els.authError.textContent = authErrorMessage(error);
+      els.authError.hidden = false;
+    } finally {
+      els.loginButton.disabled = false;
+    }
+  });
+
+  els.signOutButton.addEventListener("click", () => auth.signOut());
+
+  auth.onAuthStateChanged(async (user) => {
+    if (user) {
+      hideAuthGate();
+      els.loginPassword.value = "";
+      await loadAndRender();
+    } else {
+      articles = [];
+      renderList();
+      showAuthGate();
+    }
+  });
+}
+
+wireUiEvents();
+setupAuth();
