@@ -3,6 +3,10 @@
     "articles": {
       ".read": "auth != null && root.child('access/viewers').child(auth.uid).val() === true",
       "$articleId": {
+        "slides": {
+          ".write": "auth != null && root.child('access/editors').child(auth.uid).val() === true",
+          ".validate": "newData.exists() && newData.hasChildren(['status', 'url', 'origin', 'locked', 'updatedAt']) && newData.child('status').val() === 'completed' && newData.child('url').isString() && newData.child('url').val().length > 0 && newData.child('url').val().length <= 2048 && newData.child('url').val().beginsWith('https://docs.google.com/presentation/') && newData.child('origin').val() === 'manual' && newData.child('locked').val() === true && newData.child('updatedAt').isString() && newData.child('updatedAt').val().length > 0 && newData.child('updatedAt').val().length <= 64"
+        },
         "manga": {
           ".write": "auth != null && root.child('access/editors').child(auth.uid).val() === true",
           ".validate": "newData.exists() && newData.hasChildren(['status', 'url', 'origin', 'locked', 'updatedAt']) && newData.child('status').val() === 'completed' && newData.child('url').isString() && newData.child('url').val().length > 0 && newData.child('url').val().length <= 2048 && newData.child('url').val().beginsWith('https://notebooklm.google.com/') && newData.child('origin').val() === 'manual' && newData.child('locked').val() === true && newData.child('updatedAt').isString() && newData.child('updatedAt').val().length > 0 && newData.child('updatedAt').val().length <= 64"
@@ -15,7 +19,12 @@
     },
     "access": {
       ".read": false,
-      ".write": false
+      ".write": false,
+      "editors": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid"
+        }
+      }
     }
   }
 }

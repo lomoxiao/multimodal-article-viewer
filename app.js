@@ -6,6 +6,15 @@ const IOS_APP_LINK_HOSTS = [
   "x.com"
 ];
 
+const DESTINATION_ICONS = {
+  globe: { src: "assets/icons/globe.svg", className: "is-globe" },
+  note: { src: "assets/brands/note.png", className: "is-note" },
+  x: { src: "assets/brands/x.png", className: "is-x" },
+  youtube: { src: "assets/brands/youtube.png", className: "is-youtube" },
+  slides: { src: "assets/brands/google-slides.png", className: "is-google-slides" },
+  notebookLm: { src: "assets/brands/notebooklm.png", className: "is-notebooklm" }
+};
+
 const state = {
   activeKind: "all",
   query: "",
@@ -23,11 +32,17 @@ const state = {
   isAutoImmersive: false,
   articlesRef: null,
   articlesValueHandler: null,
+  editorAccessRef: null,
+  editorAccessHandler: null,
+  isEditor: false,
+  detailMode: "view",
   saveStatusTimer: null,
-  mangaUrlEditor: {
+  operationPanel: {
+    type: null,
     articleId: null,
     value: "",
     submitting: false,
+    dirty: false,
     error: ""
   }
 };
@@ -69,6 +84,10 @@ const els = {
   detailTitle: document.getElementById("detailTitle"),
   detailHeadline: document.getElementById("detailHeadline"),
   detailActions: document.getElementById("detailActions"),
+  editModeControl: document.getElementById("editModeControl"),
+  editModeToggle: document.getElementById("editModeToggle"),
+  detailOperationBackdrop: document.getElementById("detailOperationBackdrop"),
+  detailOperationPanel: document.getElementById("detailOperationPanel"),
   closeDetailButton: document.getElementById("closeDetailButton"),
   sheetBackdrop: document.getElementById("sheetBackdrop"),
   slidesViewer: document.getElementById("slidesViewer"),
@@ -112,6 +131,13 @@ function wireUiEvents() {
 
   els.closeDetailButton.addEventListener("click", closeMobileWorkspace);
   els.sheetBackdrop.addEventListener("click", closeMobileWorkspace);
+  els.editModeToggle.addEventListener("change", () => {
+    state.detailMode = state.isEditor && els.editModeToggle.checked ? "edit" : "view";
+    closeOperationPanel({ force: true, render: false });
+    const article = getSelectedArticle();
+    if (article && !els.detailPanel.hidden) renderDetailContent(article);
+  });
+  els.detailOperationBackdrop.addEventListener("click", () => closeOperationPanel());
   els.backToDetailButton.addEventListener("click", returnFromSlidesViewer);
   els.fullscreenButton.addEventListener("click", toggleViewerFullscreen);
   els.prevSlideButton.addEventListener("click", () => setSlideIndex(state.currentSlideIndex - 1));
@@ -135,6 +161,10 @@ function wireUiEvents() {
     window.visualViewport.addEventListener("resize", handleViewportChange);
   }
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.detailOperationPanel.hidden) {
+      closeOperationPanel();
+      return;
+    }
     if (els.slidesViewer.hidden) return;
     if (event.key === "ArrowRight") setSlideIndex(state.currentSlideIndex + 1);
     if (event.key === "ArrowLeft") setSlideIndex(state.currentSlideIndex - 1);
@@ -170,6 +200,34 @@ function stopArticlesSubscription() {
   state.articlesValueHandler = null;
 }
 
+function startEditorAccessSubscription(uid) {
+  stopEditorAccessSubscription();
+  const ref = firebase.database().ref(`/access/editors/${uid}`);
+  const valueHandler = (snapshot) => {
+    state.isEditor = snapshot.val() === true;
+    if (!state.isEditor) resetDetailEditing();
+    const article = getSelectedArticle();
+    if (article && !els.detailPanel.hidden) renderDetailContent(article);
+  };
+  const errorHandler = () => {
+    state.isEditor = false;
+    resetDetailEditing();
+    const article = getSelectedArticle();
+    if (article && !els.detailPanel.hidden) renderDetailContent(article);
+  };
+  state.editorAccessRef = ref;
+  state.editorAccessHandler = valueHandler;
+  ref.on("value", valueHandler, errorHandler);
+}
+
+function stopEditorAccessSubscription() {
+  if (state.editorAccessRef && state.editorAccessHandler) {
+    state.editorAccessRef.off("value", state.editorAccessHandler);
+  }
+  state.editorAccessRef = null;
+  state.editorAccessHandler = null;
+}
+
 function applyArticlesSnapshot(value) {
   const previousSelectedId = state.selectedId;
   const scrollTop = els.articleList.scrollTop;
@@ -178,6 +236,7 @@ function applyArticlesSnapshot(value) {
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
   if (!articles.some((article) => article.articleId === previousSelectedId)) {
+    resetDetailEditing();
     state.selectedId = articles[0]?.articleId || null;
   }
 
@@ -266,6 +325,7 @@ function getFilteredArticles() {
 }
 
 function selectArticle(articleId, options = {}) {
+  resetDetailEditing();
   state.selectedId = articleId;
   renderList();
   showDetail(getSelectedArticle(), { keepSheet: options.openSheet });
@@ -293,27 +353,27 @@ function renderDetailContent(article) {
   els.detailMeta.textContent = `${sourceLabel(article.source.kind)} · ${formatDate(article.updatedAt)} · ${article.articleId}`;
   els.detailTitle.textContent = article.title;
   els.detailHeadline.textContent = article.source.headline;
+  els.editModeControl.hidden = !state.isEditor;
+  els.editModeToggle.checked = state.isEditor && state.detailMode === "edit";
   els.detailActions.innerHTML = "";
 
   [
     {
-      icon: "W",
+      icon: getSourceDestinationIcon(article),
       title: "元記事",
       note: getUrlHost(article.canonicalUrl || article.originalUrl),
       enabled: Boolean(article.canonicalUrl || article.originalUrl),
       externalUrl: article.canonicalUrl || article.originalUrl
     },
-    {
-      icon: "S",
-      title: "Google Slides",
-      note: article.slides.status === "completed" ? "ビューアで開く" : statusLabel(article.slides.status),
-      enabled: article.slides.status === "completed" && Boolean(article.slides.url),
-      action: () => openSlidesViewer(article)
-    }
-  ].forEach((item) => {
-    els.detailActions.appendChild(createDestinationButton(item));
-  });
-  els.detailActions.appendChild(renderMangaDestination(article));
+  ].forEach((item) => els.detailActions.appendChild(createDestinationButton(item)));
+
+  if (state.detailMode === "edit" && state.isEditor) {
+    els.detailActions.appendChild(renderEditableArtifactDestination(article, "slides"));
+    els.detailActions.appendChild(renderEditableArtifactDestination(article, "manga"));
+  } else {
+    els.detailActions.appendChild(renderViewArtifactDestination(article, "slides"));
+    els.detailActions.appendChild(renderViewArtifactDestination(article, "manga"));
+  }
 }
 
 function createDestinationButton(item) {
@@ -326,13 +386,19 @@ function createDestinationButton(item) {
   } else {
     control.type = "button";
   }
+  const statusMarkup = item.status
+    ? `<span class="artifact-status is-${escapeHtml(item.status)}">${escapeHtml(statusLabel(item.status))}</span>`
+    : "";
   control.innerHTML = `
-    <span class="destination-icon">${item.icon}</span>
-    <span>
+    ${createDestinationIconMarkup(item.icon)}
+    <span class="destination-copy">
       <span class="destination-title">${escapeHtml(item.title)}</span>
       <span class="destination-note">${escapeHtml(item.note || "URL未設定")}</span>
     </span>
-    <span aria-hidden="true">›</span>
+    <span class="destination-trailing">
+      ${statusMarkup}
+      <span class="destination-cue" aria-hidden="true">${item.enabled ? (isExternalLink ? "↗" : "›") : ""}</span>
+    </span>
   `;
   if (!isExternalLink) {
     control.addEventListener("click", () => {
@@ -342,114 +408,91 @@ function createDestinationButton(item) {
   return control;
 }
 
-function renderMangaDestination(article) {
+function renderViewArtifactDestination(article, artifactType) {
+  const artifact = article[artifactType];
+  const completed = artifact.status === "completed" && Boolean(artifact.url);
+  const item = {
+    icon: artifactIcon(artifactType),
+    title: artifactTitle(artifactType),
+    note: artifactViewNote(artifactType, artifact),
+    status: artifact.status,
+    enabled: completed
+  };
+  if (artifactType === "slides") item.action = () => openSlidesViewer(article);
+  if (artifactType === "manga" && completed) item.externalUrl = artifact.url;
+  return createDestinationButton(item);
+}
+
+function renderEditableArtifactDestination(article, artifactType) {
+  const artifact = article[artifactType];
   const group = document.createElement("div");
-  group.className = "destination-group";
-  const completed = article.manga.status === "completed" && Boolean(article.manga.url);
+  group.className = "destination-group artifact-edit-group";
   const row = document.createElement("div");
-  row.className = `destination manga-destination${completed ? " is-completed" : ""}`;
-
-  const mainControl = document.createElement(completed ? "a" : "button");
-  mainControl.className = "destination-main";
-  if (completed) {
-    configureExternalLink(mainControl, article.manga.url);
-  } else {
-    mainControl.type = "button";
-  }
-  mainControl.innerHTML = `
-    <span class="destination-icon">N</span>
-    <span>
-      <span class="destination-title">漫画 / NotebookLM</span>
-      <span class="destination-note">${escapeHtml(getMangaDestinationNote(article))}</span>
+  row.className = "destination artifact-edit-destination";
+  row.innerHTML = `
+    ${createDestinationIconMarkup(artifactIcon(artifactType))}
+    <span class="destination-copy">
+      <span class="destination-title">${escapeHtml(artifactTitle(artifactType))}</span>
+      <span class="destination-note">${escapeHtml(artifact.url ? "既存URLあり" : "URL未登録")}</span>
     </span>
+    <span class="artifact-status is-${escapeHtml(artifact.status)}">${escapeHtml(statusLabel(artifact.status))}</span>
   `;
-  if (!completed) {
-    mainControl.addEventListener("click", () => openMangaUrlEditor(article));
-  }
-  row.appendChild(mainControl);
-
-  if (completed) {
-    const editButton = document.createElement("button");
-    editButton.type = "button";
-    editButton.className = "destination-edit-button";
-    editButton.textContent = "編集";
-    editButton.setAttribute("aria-label", "NotebookLM URLを編集");
-    editButton.addEventListener("click", () => openMangaUrlEditor(article));
-    row.appendChild(editButton);
-  }
-
-  const cue = document.createElement("span");
-  cue.className = "destination-cue";
-  cue.setAttribute("aria-hidden", "true");
-  cue.textContent = completed ? "↗" : "›";
-  row.appendChild(cue);
-  group.appendChild(row);
-
-  if (state.mangaUrlEditor.articleId === article.articleId) {
-    group.appendChild(renderMangaUrlForm(article));
-  }
+  const actions = document.createElement("div");
+  actions.className = "artifact-edit-actions";
+  const urlButton = document.createElement("button");
+  urlButton.type = "button";
+  urlButton.className = "artifact-action-button";
+  urlButton.textContent = artifact.url ? "URL編集" : "URL登録";
+  urlButton.addEventListener("click", () => openArtifactUrlPanel(article, artifactType));
+  actions.appendChild(urlButton);
+  group.append(row, actions);
   return group;
 }
 
-function getMangaDestinationNote(article) {
-  if (article.manga.status === "completed" && article.manga.url) return "NotebookLMを外部で開く";
-  if (article.manga.status === "processing") return "生成中・URLがあれば登録";
-  if (article.manga.status === "failed") return "URLを登録して完了にする";
-  return "NotebookLM URLを登録";
+function artifactIcon(artifactType) {
+  return artifactType === "slides" ? DESTINATION_ICONS.slides : DESTINATION_ICONS.notebookLm;
 }
 
-function renderMangaUrlForm(article) {
-  const form = document.createElement("form");
-  form.className = "manga-url-form";
-  form.noValidate = true;
-  form.innerHTML = `
-    <label class="manga-url-label" for="mangaUrlInput">NotebookLM URL</label>
-    <input
-      id="mangaUrlInput"
-      class="manga-url-input"
-      type="url"
-      inputmode="url"
-      autocomplete="url"
-      placeholder="https://notebooklm.google.com/..."
-      value="${escapeHtml(state.mangaUrlEditor.value)}"
-      ${state.mangaUrlEditor.submitting ? "disabled" : ""}
-    >
-    <p class="field-error" role="alert" ${state.mangaUrlEditor.error ? "" : "hidden"}>${escapeHtml(state.mangaUrlEditor.error)}</p>
-    <div class="form-actions">
-      <button class="form-button is-secondary" type="button" ${state.mangaUrlEditor.submitting ? "disabled" : ""}>キャンセル</button>
-      <button class="form-button is-primary" type="submit" ${state.mangaUrlEditor.submitting ? "disabled" : ""}>
-        ${state.mangaUrlEditor.submitting ? "登録中..." : article.manga.url ? "更新" : "登録"}
-      </button>
-    </div>
+function artifactTitle(artifactType) {
+  return artifactType === "slides" ? "Google Slides" : "漫画 / NotebookLM";
+}
+
+function artifactViewNote(artifactType, artifact) {
+  if (artifact.status === "completed" && artifact.url) {
+    return artifactType === "slides" ? "ビューアで開く" : "NotebookLMを外部で開く";
+  }
+  if (artifact.status === "processing") return "生成中";
+  if (artifact.status === "failed") return "生成に失敗しました";
+  return "URL未登録";
+}
+
+function getSourceDestinationIcon(article) {
+  const url = article.canonicalUrl || article.originalUrl || "";
+  let hostname = "";
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    // Unknown and non-URL sources use the generic globe icon.
+  }
+
+  if (article.source.kind === "youtube" || hostname === "youtu.be" || matchesHostname(hostname, "youtube.com")) {
+    return DESTINATION_ICONS.youtube;
+  }
+  if (matchesHostname(hostname, "note.com")) return DESTINATION_ICONS.note;
+  if (matchesHostname(hostname, "x.com") || matchesHostname(hostname, "twitter.com")) return DESTINATION_ICONS.x;
+  return DESTINATION_ICONS.globe;
+}
+
+function matchesHostname(hostname, expected) {
+  return hostname === expected || hostname.endsWith(`.${expected}`);
+}
+
+function createDestinationIconMarkup(icon) {
+  return `
+    <span class="destination-icon ${escapeHtml(icon.className)}" aria-hidden="true">
+      <img src="${escapeHtml(icon.src)}" alt="">
+    </span>
   `;
-  const input = form.querySelector(".manga-url-input");
-  input.addEventListener("input", (event) => {
-    state.mangaUrlEditor.value = event.target.value;
-    state.mangaUrlEditor.error = "";
-  });
-  form.querySelector(".is-secondary").addEventListener("click", closeMangaUrlEditor);
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    submitMangaUrl(article, state.mangaUrlEditor.value);
-  });
-  return form;
-}
-
-function openMangaUrlEditor(article) {
-  state.mangaUrlEditor = {
-    articleId: article.articleId,
-    value: article.manga.url || "",
-    submitting: false,
-    error: ""
-  };
-  renderDetailContent(article);
-  window.requestAnimationFrame(() => document.getElementById("mangaUrlInput")?.focus());
-}
-
-function closeMangaUrlEditor() {
-  state.mangaUrlEditor = { articleId: null, value: "", submitting: false, error: "" };
-  const article = getSelectedArticle();
-  if (article && !els.detailPanel.hidden) renderDetailContent(article);
 }
 
 function validateNotebookLmUrl(value) {
@@ -467,30 +510,162 @@ function validateNotebookLmUrl(value) {
   }
 }
 
-async function submitMangaUrl(article, value) {
-  if (state.mangaUrlEditor.submitting) return;
-  const validation = validateNotebookLmUrl(value);
-  if (validation.error) {
-    state.mangaUrlEditor.error = validation.error;
-    renderDetailContent(article);
-    window.requestAnimationFrame(() => document.getElementById("mangaUrlInput")?.focus());
+function validateGoogleSlidesUrl(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return { error: "Google SlidesのURLを入力してください" };
+  if (trimmed.length > 2048) return { error: "URLは2,048文字以内で入力してください" };
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "docs.google.com" || !url.pathname.startsWith("/presentation/")) {
+      return { error: "このURLはGoogle SlidesのURLではありません" };
+    }
+    return { url: url.toString() };
+  } catch {
+    return { error: "このURLはGoogle SlidesのURLではありません" };
+  }
+}
+
+function openArtifactUrlPanel(article, artifactType) {
+  if (!state.isEditor || state.detailMode !== "edit") return;
+  state.operationPanel = {
+    type: `${artifactType}-url`,
+    articleId: article.articleId,
+    value: article[artifactType].url || "",
+    submitting: false,
+    dirty: false,
+    error: ""
+  };
+  renderOperationPanel();
+  els.detailPanel.classList.add("has-operation-panel");
+  els.detailOperationBackdrop.hidden = false;
+  els.detailOperationPanel.hidden = false;
+  window.requestAnimationFrame(() => els.detailOperationPanel.querySelector(".operation-url-input")?.focus());
+}
+
+function renderOperationPanel() {
+  const article = articles.find((item) => item.articleId === state.operationPanel.articleId);
+  const artifactType = getOperationArtifactType();
+  if (!article || !artifactType) {
+    closeOperationPanel({ force: true });
     return;
   }
-  const isUpdate = Boolean(article.manga.url);
-  if (isUpdate && article.manga.url !== validation.url && !window.confirm("NotebookLM URLを更新しますか？")) {
+  const artifact = article[artifactType];
+  const isUpdate = Boolean(artifact.url);
+  const title = `${artifactTitle(artifactType)} URLを${isUpdate ? "編集" : "登録"}`;
+  const description = isUpdate ? "現在のURLを差し替えます" : "成果物をこの記事へ紐付けます";
+  const placeholder = artifactType === "slides"
+    ? "https://docs.google.com/presentation/d/.../edit"
+    : "https://notebooklm.google.com/notebook/...";
+  els.detailOperationPanel.innerHTML = `
+    <form class="operation-panel-form" novalidate>
+      <header class="operation-panel-head">
+        <button class="operation-close-button" type="button" aria-label="編集を閉じる">
+          <span class="mobile-only" aria-hidden="true">‹</span><span class="desktop-only" aria-hidden="true">×</span>
+        </button>
+        ${createDestinationIconMarkup(artifactIcon(artifactType))}
+        <span class="operation-title-copy">
+          <strong>${escapeHtml(title)}</strong>
+          <small>${escapeHtml(description)}</small>
+        </span>
+      </header>
+      <div class="operation-panel-body">
+        <div class="operation-article-summary">
+          <strong>対象記事</strong>
+          <span>${escapeHtml(article.title)}</span>
+        </div>
+        <label class="operation-field-label" for="operationUrlInput">${escapeHtml(artifactTitle(artifactType))} URL</label>
+        <input
+          id="operationUrlInput"
+          class="operation-url-input"
+          type="url"
+          inputmode="url"
+          autocomplete="url"
+          placeholder="${escapeHtml(placeholder)}"
+          value="${escapeHtml(state.operationPanel.value)}"
+          ${state.operationPanel.submitting ? "disabled" : ""}
+        >
+        <p class="field-error" role="alert" ${state.operationPanel.error ? "" : "hidden"}>${escapeHtml(state.operationPanel.error)}</p>
+        <div class="operation-result-preview">
+          ${createDestinationIconMarkup(artifactIcon(artifactType))}
+          <span><strong>保存後の表示</strong><small>${escapeHtml(artifactTitle(artifactType))} · 利用可能</small></span>
+        </div>
+      </div>
+      <footer class="operation-panel-footer">
+        <button class="operation-button is-secondary" type="button" ${state.operationPanel.submitting ? "disabled" : ""}>キャンセル</button>
+        <button class="operation-button is-primary" type="submit" ${state.operationPanel.submitting ? "disabled" : ""}>
+          ${state.operationPanel.submitting ? "保存中..." : `URLを${isUpdate ? "更新" : "登録"}`}
+        </button>
+      </footer>
+    </form>
+  `;
+  const form = els.detailOperationPanel.querySelector("form");
+  const input = form.querySelector(".operation-url-input");
+  input.addEventListener("input", (event) => {
+    state.operationPanel.value = event.target.value;
+    state.operationPanel.dirty = true;
+    state.operationPanel.error = "";
+  });
+  form.querySelector(".operation-close-button").addEventListener("click", () => closeOperationPanel());
+  form.querySelector(".is-secondary").addEventListener("click", () => closeOperationPanel());
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitArtifactUrl(article, artifactType, state.operationPanel.value);
+  });
+}
+
+function getOperationArtifactType() {
+  if (state.operationPanel.type === "slides-url") return "slides";
+  if (state.operationPanel.type === "manga-url") return "manga";
+  return null;
+}
+
+function closeOperationPanel(options = {}) {
+  if (state.operationPanel.submitting && !options.force) return false;
+  if (state.operationPanel.dirty && !options.force && !window.confirm("入力内容を破棄して閉じますか？")) return false;
+  state.operationPanel = { type: null, articleId: null, value: "", submitting: false, dirty: false, error: "" };
+  els.detailPanel.classList.remove("has-operation-panel");
+  els.detailOperationBackdrop.hidden = true;
+  els.detailOperationPanel.hidden = true;
+  els.detailOperationPanel.innerHTML = "";
+  if (options.render !== false) els.editModeToggle.focus();
+  return true;
+}
+
+function resetDetailEditing() {
+  state.detailMode = "view";
+  if (els.editModeToggle) els.editModeToggle.checked = false;
+  closeOperationPanel({ force: true, render: false });
+}
+
+async function submitArtifactUrl(article, artifactType, value) {
+  if (state.operationPanel.submitting) return;
+  const validation = artifactType === "slides" ? validateGoogleSlidesUrl(value) : validateNotebookLmUrl(value);
+  if (validation.error) {
+    state.operationPanel.error = validation.error;
+    renderOperationPanel();
+    window.requestAnimationFrame(() => els.detailOperationPanel.querySelector(".operation-url-input")?.focus());
+    return;
+  }
+  const artifact = article[artifactType];
+  const isUpdate = Boolean(artifact.url);
+  if (artifact.url === validation.url) {
+    closeOperationPanel({ force: true });
+    return;
+  }
+  if (isUpdate && !window.confirm(`${artifactTitle(artifactType)} URLを更新しますか？`)) {
     return;
   }
   if (!/^[^.#$\[\]\/]+$/.test(article.articleId)) {
-    state.mangaUrlEditor.error = "記事IDが不正なため更新できません";
-    renderDetailContent(article);
+    state.operationPanel.error = "記事IDが不正なため更新できません";
+    renderOperationPanel();
     return;
   }
 
-  state.mangaUrlEditor.submitting = true;
-  state.mangaUrlEditor.error = "";
-  renderDetailContent(article);
+  state.operationPanel.submitting = true;
+  state.operationPanel.error = "";
+  renderOperationPanel();
   const now = new Date().toISOString();
-  const manga = {
+  const artifactValue = {
     status: "completed",
     url: validation.url,
     origin: "manual",
@@ -499,21 +674,21 @@ async function submitMangaUrl(article, value) {
   };
   try {
     await firebase.database().ref().update({
-      [`articles/${article.articleId}/manga`]: manga,
+      [`articles/${article.articleId}/${artifactType}`]: artifactValue,
       [`articles/${article.articleId}/updatedAt`]: now
     });
-    article.manga = manga;
+    article[artifactType] = artifactValue;
     article.updatedAt = now;
-    state.mangaUrlEditor = { articleId: null, value: "", submitting: false, error: "" };
+    closeOperationPanel({ force: true, render: false });
     renderList();
     renderDetailContent(article);
-    showSaveStatus(isUpdate ? "NotebookLM URLを更新しました" : "NotebookLM URLを登録しました");
+    showSaveStatus(`${artifactTitle(artifactType)} URLを${isUpdate ? "更新" : "登録"}しました`);
   } catch (error) {
-    state.mangaUrlEditor.submitting = false;
-    state.mangaUrlEditor.error = /permission_denied/i.test(String(error && error.message))
+    state.operationPanel.submitting = false;
+    state.operationPanel.error = /permission_denied/i.test(String(error && error.message))
       ? "更新権限がありません"
       : "通信に失敗しました。もう一度お試しください";
-    renderDetailContent(article);
+    renderOperationPanel();
   }
 }
 
@@ -732,6 +907,7 @@ function parseApiResponse(response) {
 }
 
 function closeMobileWorkspace() {
+  resetDetailEditing();
   els.workspacePane.classList.remove("has-mobile-detail");
   document.body.classList.remove("sheet-open", "slides-viewer-open");
   els.sheetBackdrop.hidden = true;
@@ -1131,12 +1307,15 @@ function setupAuth() {
     if (user) {
       hideAuthGate();
       els.loginPassword.value = "";
+      startEditorAccessSubscription(user.uid);
       startArticlesSubscription();
     } else {
       stopArticlesSubscription();
+      stopEditorAccessSubscription();
       articles = [];
       state.selectedId = null;
-      state.mangaUrlEditor = { articleId: null, value: "", submitting: false, error: "" };
+      state.isEditor = false;
+      resetDetailEditing();
       renderList();
       showAuthGate();
     }

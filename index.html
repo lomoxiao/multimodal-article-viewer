@@ -45,14 +45,23 @@
 
       <article id="detailPanel" class="detail-panel" hidden>
         <header class="detail-head">
-          <button id="closeDetailButton" class="icon-button mobile-only" type="button" aria-label="詳細を閉じる">×</button>
-          <div>
-            <p id="detailMeta" class="detail-meta"></p>
-            <h2 id="detailTitle"></h2>
+          <div class="detail-heading">
+            <button id="closeDetailButton" class="icon-button mobile-only" type="button" aria-label="詳細を閉じる">×</button>
+            <div>
+              <p id="detailMeta" class="detail-meta"></p>
+              <h2 id="detailTitle"></h2>
+            </div>
           </div>
+          <label id="editModeControl" class="edit-mode-control" hidden>
+            <span>編集</span>
+            <input id="editModeToggle" type="checkbox" role="switch" aria-label="編集モード">
+            <span class="edit-mode-track" aria-hidden="true"><span></span></span>
+          </label>
         </header>
         <p id="detailHeadline" class="detail-headline"></p>
         <div id="detailActions" class="destination-grid"></div>
+        <div id="detailOperationBackdrop" class="detail-operation-backdrop" hidden></div>
+        <section id="detailOperationPanel" class="detail-operation-panel" aria-label="成果物URLの編集" hidden></section>
       </article>
 
       <section id="slidesViewer" class="slides-viewer" aria-label="Google Slides viewer" hidden>
