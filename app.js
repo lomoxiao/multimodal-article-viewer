@@ -1,5 +1,11 @@
 let articles = [];
 
+const IOS_APP_LINK_HOSTS = [
+  "notebooklm.google.com",
+  "note.com",
+  "x.com"
+];
+
 const state = {
   activeKind: "all",
   query: "",
@@ -295,7 +301,7 @@ function renderDetailContent(article) {
       title: "元記事",
       note: getUrlHost(article.canonicalUrl || article.originalUrl),
       enabled: Boolean(article.canonicalUrl || article.originalUrl),
-      action: () => openExternal(article.canonicalUrl || article.originalUrl)
+      externalUrl: article.canonicalUrl || article.originalUrl
     },
     {
       icon: "S",
@@ -311,11 +317,16 @@ function renderDetailContent(article) {
 }
 
 function createDestinationButton(item) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "destination";
-  button.setAttribute("aria-disabled", item.enabled ? "false" : "true");
-  button.innerHTML = `
+  const isExternalLink = item.enabled && Boolean(item.externalUrl);
+  const control = document.createElement(isExternalLink ? "a" : "button");
+  control.className = "destination";
+  control.setAttribute("aria-disabled", item.enabled ? "false" : "true");
+  if (isExternalLink) {
+    configureExternalLink(control, item.externalUrl);
+  } else {
+    control.type = "button";
+  }
+  control.innerHTML = `
     <span class="destination-icon">${item.icon}</span>
     <span>
       <span class="destination-title">${escapeHtml(item.title)}</span>
@@ -323,10 +334,12 @@ function createDestinationButton(item) {
     </span>
     <span aria-hidden="true">›</span>
   `;
-  button.addEventListener("click", () => {
-    if (item.enabled) item.action();
-  });
-  return button;
+  if (!isExternalLink) {
+    control.addEventListener("click", () => {
+      if (item.enabled) item.action();
+    });
+  }
+  return control;
 }
 
 function renderMangaDestination(article) {
@@ -339,9 +352,7 @@ function renderMangaDestination(article) {
   const mainControl = document.createElement(completed ? "a" : "button");
   mainControl.className = "destination-main";
   if (completed) {
-    mainControl.href = article.manga.url;
-    mainControl.target = "_blank";
-    mainControl.rel = "noopener noreferrer";
+    configureExternalLink(mainControl, article.manga.url);
   } else {
     mainControl.type = "button";
   }
@@ -960,8 +971,32 @@ function handleViewerTouchEnd(event) {
   if (dx > 0) setSlideIndex(state.currentSlideIndex - 1);
 }
 
-function openExternal(url) {
-  window.open(url, "_blank", "noopener");
+function configureExternalLink(link, url) {
+  link.href = url;
+  link.rel = "noopener noreferrer";
+  if (shouldOpenIosAppLinkInSameTab(url)) {
+    link.removeAttribute("target");
+  } else {
+    link.target = "_blank";
+  }
+}
+
+function shouldOpenIosAppLinkInSameTab(url) {
+  if (!isIosOrIpadOs()) return false;
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return IOS_APP_LINK_HOSTS.some((allowedHost) =>
+      hostname === allowedHost || hostname.endsWith(`.${allowedHost}`)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isIosOrIpadOs() {
+  const userAgent = navigator.userAgent || "";
+  return /iPad|iPhone|iPod/.test(userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
 function isTabletLayout() {

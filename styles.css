@@ -345,6 +345,15 @@ h3 {
   cursor: not-allowed;
 }
 
+a.destination {
+  cursor: pointer;
+}
+
+a.destination:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
 .destination-icon {
   display: grid;
   place-items: center;
