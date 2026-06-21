@@ -336,21 +336,26 @@ function renderMangaDestination(article) {
   const row = document.createElement("div");
   row.className = `destination manga-destination${completed ? " is-completed" : ""}`;
 
-  const mainButton = document.createElement("button");
-  mainButton.type = "button";
-  mainButton.className = "destination-main";
-  mainButton.innerHTML = `
+  const mainControl = document.createElement(completed ? "a" : "button");
+  mainControl.className = "destination-main";
+  if (completed) {
+    mainControl.href = article.manga.url;
+    mainControl.target = "_blank";
+    mainControl.rel = "noopener noreferrer";
+  } else {
+    mainControl.type = "button";
+  }
+  mainControl.innerHTML = `
     <span class="destination-icon">N</span>
     <span>
       <span class="destination-title">漫画 / NotebookLM</span>
       <span class="destination-note">${escapeHtml(getMangaDestinationNote(article))}</span>
     </span>
   `;
-  mainButton.addEventListener("click", () => {
-    if (completed) openExternal(article.manga.url);
-    else openMangaUrlEditor(article);
-  });
-  row.appendChild(mainButton);
+  if (!completed) {
+    mainControl.addEventListener("click", () => openMangaUrlEditor(article));
+  }
+  row.appendChild(mainControl);
 
   if (completed) {
     const editButton = document.createElement("button");

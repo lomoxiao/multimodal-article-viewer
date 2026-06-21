@@ -388,7 +388,14 @@ h3 {
   background: transparent;
   color: inherit;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
+}
+
+.destination-main:focus-visible {
+  border-radius: 6px;
+  outline: 2px solid var(--manga);
+  outline-offset: 2px;
 }
 
 .destination-edit-button {
