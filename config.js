@@ -10,10 +10,10 @@ window.MULTIMODAL_VIEWER_CONFIG = {
   //   Firebase Console → Project settings → General → Your apps → Web app → SDK setup → Config.
   // Use the SAME project as the Phase 2 article registration (same Realtime Database).
   FIREBASE_CONFIG: {
-    apiKey: "REPLACE_WITH_apiKey",
-    authDomain: "REPLACE_WITH_authDomain",          // e.g. your-project.firebaseapp.com
-    databaseURL: "REPLACE_WITH_databaseURL",        // e.g. https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app
-    projectId: "REPLACE_WITH_projectId",
-    appId: "REPLACE_WITH_appId"
+    apiKey: "AIzaSyAfyvmKhGA39bx1QoIF15rcQDtncmpuldQ",
+    authDomain: "knowledge-article-registry.firebaseapp.com",          // e.g. your-project.firebaseapp.com
+    databaseURL: "https://knowledge-article-registry-default-rtdb.asia-southeast1.firebasedatabase.app",        // e.g. https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app
+    projectId: "knowledge-article-registry",
+    appId: "1:555500203908:web:5bd7068fe31453ba6a37d1"
   }
 };

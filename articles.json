@@ -93,5 +93,43 @@
       "url": ""
     },
     "updatedAt": "2026-06-20T07:08:17.591Z"
+  },
+  {
+    "articleId": "url_5943cfd6827b",
+    "canonicalUrl": "https://x.com/sokichi_hoshino/status/2067757089867628904?s=46",
+    "originalUrl": "https://x.com/sokichi_hoshino/status/2067757089867628904?s=46",
+    "title": "Copilotを業務で使い分ける地図",
+    "source": {
+      "kind": "web",
+      "headline": "本日は、Microsoft Copilotを業務でどう使い分けるかを整理します。ポイントは、Copilotの性能だけを見るのではなく、Chat、Agent、Studio、Workflowsという役割ごとに仕事を振り分けることです。"
+    },
+    "slides": {
+      "status": "completed",
+      "url": "https://docs.google.com/presentation/d/1fION56MvyN_JT8nZh6SaSMszN5wtYTx8Y5e78zWhFqg/edit"
+    },
+    "manga": {
+      "status": "pending",
+      "url": ""
+    },
+    "updatedAt": "2026-06-20T10:18:05.312Z"
+  },
+  {
+    "articleId": "url_f5a86cb35e89",
+    "canonicalUrl": "https://x.com/kanauo2/status/2067697510463000655?s=46",
+    "originalUrl": "https://x.com/kanauo2/status/2067697510463000655?s=46",
+    "title": "Claude Designアップデート解説",
+    "source": {
+      "kind": "web",
+      "headline": "本日は、Claude Designの大幅アップデート内容を、実際に使う人が迷わず触れるように整理して説明します。対象は、スライド、LP、アプリ試作品などをAIで作りたい人です。"
+    },
+    "slides": {
+      "status": "completed",
+      "url": "https://docs.google.com/presentation/d/1mVnnnf8GHFquQ-SOXpGOEzryGxJNLPB8eE7ZLzYIJo8/edit"
+    },
+    "manga": {
+      "status": "pending",
+      "url": ""
+    },
+    "updatedAt": "2026-06-20T15:45:44.057Z"
   }
 ]
