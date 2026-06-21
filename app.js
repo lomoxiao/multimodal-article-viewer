@@ -14,7 +14,16 @@ const state = {
   viewerTouchStartX: null,
   viewerTouchStartY: null,
   viewerTouchStartTarget: null,
-  isAutoImmersive: false
+  isAutoImmersive: false,
+  articlesRef: null,
+  articlesValueHandler: null,
+  saveStatusTimer: null,
+  mangaUrlEditor: {
+    articleId: null,
+    value: "",
+    submitting: false,
+    error: ""
+  }
 };
 
 const apiClient = {
@@ -73,7 +82,8 @@ const els = {
   loginPassword: document.getElementById("loginPassword"),
   loginButton: document.getElementById("loginButton"),
   authError: document.getElementById("authError"),
-  signOutButton: document.getElementById("signOutButton")
+  signOutButton: document.getElementById("signOutButton"),
+  saveStatus: document.getElementById("saveStatus")
 };
 
 function wireUiEvents() {
@@ -134,28 +144,52 @@ function wireUiEvents() {
 
 }
 
-async function loadAndRender() {
-  let loaded;
-  try {
-    loaded = await loadArticles();
-  } catch (error) {
-    articles = [];
-    renderList();
-    showDataError(error);
-    return;
-  }
-  articles = loaded;
-  articles.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  renderList();
-  if (articles.length) {
-    selectArticle(articles[0].articleId, { openSheet: false });
-  }
+function startArticlesSubscription() {
+  stopArticlesSubscription();
+  const ref = firebase.database().ref("/articles");
+  const valueHandler = (snapshot) => applyArticlesSnapshot(snapshot.val() || {});
+  const errorHandler = (error) => {
+    if (!articles.length) showDataError(error);
+  };
+  state.articlesRef = ref;
+  state.articlesValueHandler = valueHandler;
+  ref.on("value", valueHandler, errorHandler);
 }
 
-async function loadArticles() {
-  const snapshot = await firebase.database().ref("/articles").get();
-  const value = snapshot.val() || {};
-  return Object.values(value).map(normalizeArticle);
+function stopArticlesSubscription() {
+  if (state.articlesRef && state.articlesValueHandler) {
+    state.articlesRef.off("value", state.articlesValueHandler);
+  }
+  state.articlesRef = null;
+  state.articlesValueHandler = null;
+}
+
+function applyArticlesSnapshot(value) {
+  const previousSelectedId = state.selectedId;
+  const scrollTop = els.articleList.scrollTop;
+  articles = Object.values(value)
+    .map(normalizeArticle)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+  if (!articles.some((article) => article.articleId === previousSelectedId)) {
+    state.selectedId = articles[0]?.articleId || null;
+  }
+
+  renderList();
+  els.articleList.scrollTop = scrollTop;
+
+  const selected = getSelectedArticle();
+  if (!selected) {
+    els.detailPanel.hidden = true;
+    els.emptyWorkspace.hidden = false;
+    return;
+  }
+
+  if (!els.detailPanel.hidden) {
+    renderDetailContent(selected);
+  } else if (!previousSelectedId && els.slidesViewer.hidden) {
+    showDetail(selected, { openSheet: false });
+  }
 }
 
 function normalizeArticle(raw) {
@@ -246,6 +280,10 @@ function showDetail(article, options = {}) {
   document.body.classList.toggle("sheet-open", Boolean(options.keepSheet));
   els.sheetBackdrop.hidden = !options.keepSheet || isTabletLayout();
 
+  renderDetailContent(article);
+}
+
+function renderDetailContent(article) {
   els.detailMeta.textContent = `${sourceLabel(article.source.kind)} · ${formatDate(article.updatedAt)} · ${article.articleId}`;
   els.detailTitle.textContent = article.title;
   els.detailHeadline.textContent = article.source.headline;
@@ -265,32 +303,212 @@ function showDetail(article, options = {}) {
       note: article.slides.status === "completed" ? "ビューアで開く" : statusLabel(article.slides.status),
       enabled: article.slides.status === "completed" && Boolean(article.slides.url),
       action: () => openSlidesViewer(article)
-    },
-    {
-      icon: "N",
-      title: "漫画 / NotebookLM",
-      note: article.manga.status === "completed" ? "NotebookLMを外部で開く" : statusLabel(article.manga.status),
-      enabled: article.manga.status === "completed" && Boolean(article.manga.url),
-      action: () => openExternal(article.manga.url)
     }
   ].forEach((item) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "destination";
-    button.setAttribute("aria-disabled", item.enabled ? "false" : "true");
-    button.innerHTML = `
-      <span class="destination-icon">${item.icon}</span>
-      <span>
-        <span class="destination-title">${escapeHtml(item.title)}</span>
-        <span class="destination-note">${escapeHtml(item.note || "URL未設定")}</span>
-      </span>
-      <span aria-hidden="true">›</span>
-    `;
-    button.addEventListener("click", () => {
-      if (item.enabled) item.action();
-    });
-    els.detailActions.appendChild(button);
+    els.detailActions.appendChild(createDestinationButton(item));
   });
+  els.detailActions.appendChild(renderMangaDestination(article));
+}
+
+function createDestinationButton(item) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "destination";
+  button.setAttribute("aria-disabled", item.enabled ? "false" : "true");
+  button.innerHTML = `
+    <span class="destination-icon">${item.icon}</span>
+    <span>
+      <span class="destination-title">${escapeHtml(item.title)}</span>
+      <span class="destination-note">${escapeHtml(item.note || "URL未設定")}</span>
+    </span>
+    <span aria-hidden="true">›</span>
+  `;
+  button.addEventListener("click", () => {
+    if (item.enabled) item.action();
+  });
+  return button;
+}
+
+function renderMangaDestination(article) {
+  const group = document.createElement("div");
+  group.className = "destination-group";
+  const completed = article.manga.status === "completed" && Boolean(article.manga.url);
+  const row = document.createElement("div");
+  row.className = `destination manga-destination${completed ? " is-completed" : ""}`;
+
+  const mainButton = document.createElement("button");
+  mainButton.type = "button";
+  mainButton.className = "destination-main";
+  mainButton.innerHTML = `
+    <span class="destination-icon">N</span>
+    <span>
+      <span class="destination-title">漫画 / NotebookLM</span>
+      <span class="destination-note">${escapeHtml(getMangaDestinationNote(article))}</span>
+    </span>
+  `;
+  mainButton.addEventListener("click", () => {
+    if (completed) openExternal(article.manga.url);
+    else openMangaUrlEditor(article);
+  });
+  row.appendChild(mainButton);
+
+  if (completed) {
+    const editButton = document.createElement("button");
+    editButton.type = "button";
+    editButton.className = "destination-edit-button";
+    editButton.textContent = "編集";
+    editButton.setAttribute("aria-label", "NotebookLM URLを編集");
+    editButton.addEventListener("click", () => openMangaUrlEditor(article));
+    row.appendChild(editButton);
+  }
+
+  const cue = document.createElement("span");
+  cue.className = "destination-cue";
+  cue.setAttribute("aria-hidden", "true");
+  cue.textContent = completed ? "↗" : "›";
+  row.appendChild(cue);
+  group.appendChild(row);
+
+  if (state.mangaUrlEditor.articleId === article.articleId) {
+    group.appendChild(renderMangaUrlForm(article));
+  }
+  return group;
+}
+
+function getMangaDestinationNote(article) {
+  if (article.manga.status === "completed" && article.manga.url) return "NotebookLMを外部で開く";
+  if (article.manga.status === "processing") return "生成中・URLがあれば登録";
+  if (article.manga.status === "failed") return "URLを登録して完了にする";
+  return "NotebookLM URLを登録";
+}
+
+function renderMangaUrlForm(article) {
+  const form = document.createElement("form");
+  form.className = "manga-url-form";
+  form.noValidate = true;
+  form.innerHTML = `
+    <label class="manga-url-label" for="mangaUrlInput">NotebookLM URL</label>
+    <input
+      id="mangaUrlInput"
+      class="manga-url-input"
+      type="url"
+      inputmode="url"
+      autocomplete="url"
+      placeholder="https://notebooklm.google.com/..."
+      value="${escapeHtml(state.mangaUrlEditor.value)}"
+      ${state.mangaUrlEditor.submitting ? "disabled" : ""}
+    >
+    <p class="field-error" role="alert" ${state.mangaUrlEditor.error ? "" : "hidden"}>${escapeHtml(state.mangaUrlEditor.error)}</p>
+    <div class="form-actions">
+      <button class="form-button is-secondary" type="button" ${state.mangaUrlEditor.submitting ? "disabled" : ""}>キャンセル</button>
+      <button class="form-button is-primary" type="submit" ${state.mangaUrlEditor.submitting ? "disabled" : ""}>
+        ${state.mangaUrlEditor.submitting ? "登録中..." : article.manga.url ? "更新" : "登録"}
+      </button>
+    </div>
+  `;
+  const input = form.querySelector(".manga-url-input");
+  input.addEventListener("input", (event) => {
+    state.mangaUrlEditor.value = event.target.value;
+    state.mangaUrlEditor.error = "";
+  });
+  form.querySelector(".is-secondary").addEventListener("click", closeMangaUrlEditor);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitMangaUrl(article, state.mangaUrlEditor.value);
+  });
+  return form;
+}
+
+function openMangaUrlEditor(article) {
+  state.mangaUrlEditor = {
+    articleId: article.articleId,
+    value: article.manga.url || "",
+    submitting: false,
+    error: ""
+  };
+  renderDetailContent(article);
+  window.requestAnimationFrame(() => document.getElementById("mangaUrlInput")?.focus());
+}
+
+function closeMangaUrlEditor() {
+  state.mangaUrlEditor = { articleId: null, value: "", submitting: false, error: "" };
+  const article = getSelectedArticle();
+  if (article && !els.detailPanel.hidden) renderDetailContent(article);
+}
+
+function validateNotebookLmUrl(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return { error: "NotebookLMのURLを入力してください" };
+  if (trimmed.length > 2048) return { error: "URLは2,048文字以内で入力してください" };
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "notebooklm.google.com" || url.pathname === "/") {
+      return { error: "このURLはNotebookLMのURLではありません" };
+    }
+    return { url: url.toString() };
+  } catch {
+    return { error: "このURLはNotebookLMのURLではありません" };
+  }
+}
+
+async function submitMangaUrl(article, value) {
+  if (state.mangaUrlEditor.submitting) return;
+  const validation = validateNotebookLmUrl(value);
+  if (validation.error) {
+    state.mangaUrlEditor.error = validation.error;
+    renderDetailContent(article);
+    window.requestAnimationFrame(() => document.getElementById("mangaUrlInput")?.focus());
+    return;
+  }
+  const isUpdate = Boolean(article.manga.url);
+  if (isUpdate && article.manga.url !== validation.url && !window.confirm("NotebookLM URLを更新しますか？")) {
+    return;
+  }
+  if (!/^[^.#$\[\]\/]+$/.test(article.articleId)) {
+    state.mangaUrlEditor.error = "記事IDが不正なため更新できません";
+    renderDetailContent(article);
+    return;
+  }
+
+  state.mangaUrlEditor.submitting = true;
+  state.mangaUrlEditor.error = "";
+  renderDetailContent(article);
+  const now = new Date().toISOString();
+  const manga = {
+    status: "completed",
+    url: validation.url,
+    origin: "manual",
+    locked: true,
+    updatedAt: now
+  };
+  try {
+    await firebase.database().ref().update({
+      [`articles/${article.articleId}/manga`]: manga,
+      [`articles/${article.articleId}/updatedAt`]: now
+    });
+    article.manga = manga;
+    article.updatedAt = now;
+    state.mangaUrlEditor = { articleId: null, value: "", submitting: false, error: "" };
+    renderList();
+    renderDetailContent(article);
+    showSaveStatus(isUpdate ? "NotebookLM URLを更新しました" : "NotebookLM URLを登録しました");
+  } catch (error) {
+    state.mangaUrlEditor.submitting = false;
+    state.mangaUrlEditor.error = /permission_denied/i.test(String(error && error.message))
+      ? "更新権限がありません"
+      : "通信に失敗しました。もう一度お試しください";
+    renderDetailContent(article);
+  }
+}
+
+function showSaveStatus(message) {
+  if (!els.saveStatus) return;
+  window.clearTimeout(state.saveStatusTimer);
+  els.saveStatus.textContent = message;
+  els.saveStatus.hidden = false;
+  state.saveStatusTimer = window.setTimeout(() => {
+    els.saveStatus.hidden = true;
+  }, 3000);
 }
 
 function openSlidesViewer(article) {
@@ -619,6 +837,9 @@ function markFullscreenUnavailable() {
 function handleViewportChange() {
   updateViewerViewportHeight();
   applyAutoImmersiveMode();
+  if (document.body.classList.contains("sheet-open")) {
+    els.sheetBackdrop.hidden = isTabletLayout() || !els.slidesViewer.hidden;
+  }
 }
 
 function applyAutoImmersiveMode() {
@@ -870,9 +1091,12 @@ function setupAuth() {
     if (user) {
       hideAuthGate();
       els.loginPassword.value = "";
-      await loadAndRender();
+      startArticlesSubscription();
     } else {
+      stopArticlesSubscription();
       articles = [];
+      state.selectedId = null;
+      state.mangaUrlEditor = { articleId: null, value: "", submitting: false, error: "" };
       renderList();
       showAuthGate();
     }
