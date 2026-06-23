@@ -12,8 +12,7 @@
     <section class="library-pane" aria-labelledby="appTitle">
       <header class="app-header">
         <div>
-          <p class="eyebrow">Multimodal Article Viewer</p>
-          <h1 id="appTitle">今日のヘッドライン</h1>
+          <p id="appTitle" class="eyebrow">Multimodal Article Viewer</p>
         </div>
         <div class="app-header-actions">
           <span id="articleCount" class="count-pill" aria-live="polite"></span>
@@ -21,11 +20,7 @@
         </div>
       </header>
 
-      <div class="toolbar" aria-label="記事検索とフィルター">
-        <label class="search-field" for="searchInput">
-          <span aria-hidden="true">⌕</span>
-          <input id="searchInput" type="search" autocomplete="off" placeholder="タイトル・ヘッドラインで検索">
-        </label>
+      <div class="toolbar" aria-label="記事フィルター">
         <div class="segmented-control" role="tablist" aria-label="ソース種別">
           <button class="segment is-active" type="button" data-kind="all" aria-selected="true">すべて</button>
           <button class="segment" type="button" data-kind="web" aria-selected="false">Web</button>
@@ -96,6 +91,71 @@
 
   <div id="sheetBackdrop" class="sheet-backdrop" hidden></div>
   <div id="saveStatus" class="save-status" role="status" aria-live="polite" hidden></div>
+
+  <div id="floatingActions" class="floating-actions" aria-label="クイック操作">
+    <button id="generationFab" class="fab-button is-primary" type="button" aria-label="生成依頼を開く">＋</button>
+    <button id="searchFab" class="fab-button" type="button" aria-label="検索を開く">⌕</button>
+  </div>
+
+  <form id="bottomSearchBar" class="bottom-search-bar" role="search" hidden>
+    <span aria-hidden="true">⌕</span>
+    <input id="searchInput" type="search" autocomplete="off" placeholder="タイトル・ヘッドラインで検索">
+    <button id="searchClearButton" class="search-mini-button" type="button" aria-label="検索語をクリア">×</button>
+    <button id="searchCloseButton" class="search-mini-button" type="button" aria-label="検索を閉じる">閉じる</button>
+  </form>
+
+  <div id="generationBackdrop" class="generation-backdrop" hidden></div>
+  <section id="generationPanel" class="generation-panel" aria-labelledby="generationTitle" hidden>
+    <form id="generationForm" class="generation-form" novalidate>
+      <header class="generation-head">
+        <div>
+          <p class="eyebrow">Multimodal request</p>
+          <h2 id="generationTitle">生成依頼</h2>
+        </div>
+        <button id="generationCloseButton" class="icon-button" type="button" aria-label="生成依頼を閉じる">×</button>
+      </header>
+      <div class="generation-body">
+        <label class="generation-field" for="generationUrlInput">
+          <span>ソースURL</span>
+          <input id="generationUrlInput" type="url" inputmode="url" autocomplete="url" placeholder="https://example.com/article">
+        </label>
+        <div class="generation-options">
+          <label class="generation-field" for="generationAudienceInput">
+            <span>対象読者</span>
+            <input id="generationAudienceInput" type="text" autocomplete="off" placeholder="例: 経営層、開発者、営業向け">
+          </label>
+          <label class="generation-field" for="generationPagesInput">
+            <span>目標スライド数</span>
+            <input id="generationPagesInput" type="number" min="1" step="1" inputmode="numeric" placeholder="例: 8">
+          </label>
+          <label class="generation-field is-wide" for="generationFocusInput">
+            <span>重点テーマ</span>
+            <input id="generationFocusInput" type="text" autocomplete="off" placeholder="例: 日本市場への影響を中心に">
+          </label>
+        </div>
+        <label class="generation-check" for="generationMangaToggle">
+          <input id="generationMangaToggle" type="checkbox">
+          <span>漫画も生成</span>
+        </label>
+        <label id="generationMangaStyleField" class="generation-field" for="generationMangaArtStyleSelect" hidden>
+          <span>画風</span>
+          <select id="generationMangaArtStyleSelect">
+            <option value="A">A 王道少年漫画</option>
+            <option value="B">B 少女漫画</option>
+            <option value="C">C 4コマギャグ</option>
+            <option value="D">D 青年劇画</option>
+            <option value="E">E アメコミ</option>
+            <option value="F" selected>F 絵本風</option>
+            <option value="G">G レトロ昭和漫画</option>
+          </select>
+        </label>
+        <p id="generationMessage" class="form-message" role="alert" aria-live="polite"></p>
+      </div>
+      <footer class="generation-footer">
+        <button id="generationSubmitButton" class="generation-submit" type="submit">生成を依頼</button>
+      </footer>
+    </form>
+  </section>
 
   <div id="authGate" class="auth-gate" hidden>
     <form id="loginForm" class="auth-card" autocomplete="on">

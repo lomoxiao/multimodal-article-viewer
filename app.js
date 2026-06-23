@@ -44,6 +44,13 @@ const state = {
     submitting: false,
     dirty: false,
     error: ""
+  },
+  isSearchOpen: false,
+  generationPanel: {
+    open: false,
+    submitting: false,
+    error: "",
+    sourceContext: "list"
   }
 };
 
@@ -69,6 +76,19 @@ const apiClient = {
       }
     });
     return fetch(url.toString(), { method: "GET" }).then(parseApiResponse);
+  },
+
+  post(action, payload = {}) {
+    const config = this.getConfig();
+    return fetch(config.GAS_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        ...payload,
+        action,
+        clientKey: config.CLIENT_KEY || ""
+      })
+    }).then(parseApiResponse);
   }
 };
 
@@ -108,7 +128,26 @@ const els = {
   loginButton: document.getElementById("loginButton"),
   authError: document.getElementById("authError"),
   signOutButton: document.getElementById("signOutButton"),
-  saveStatus: document.getElementById("saveStatus")
+  saveStatus: document.getElementById("saveStatus"),
+  floatingActions: document.getElementById("floatingActions"),
+  generationFab: document.getElementById("generationFab"),
+  searchFab: document.getElementById("searchFab"),
+  bottomSearchBar: document.getElementById("bottomSearchBar"),
+  searchClearButton: document.getElementById("searchClearButton"),
+  searchCloseButton: document.getElementById("searchCloseButton"),
+  generationBackdrop: document.getElementById("generationBackdrop"),
+  generationPanel: document.getElementById("generationPanel"),
+  generationForm: document.getElementById("generationForm"),
+  generationCloseButton: document.getElementById("generationCloseButton"),
+  generationUrlInput: document.getElementById("generationUrlInput"),
+  generationAudienceInput: document.getElementById("generationAudienceInput"),
+  generationFocusInput: document.getElementById("generationFocusInput"),
+  generationPagesInput: document.getElementById("generationPagesInput"),
+  generationMangaToggle: document.getElementById("generationMangaToggle"),
+  generationMangaStyleField: document.getElementById("generationMangaStyleField"),
+  generationMangaArtStyleSelect: document.getElementById("generationMangaArtStyleSelect"),
+  generationMessage: document.getElementById("generationMessage"),
+  generationSubmitButton: document.getElementById("generationSubmitButton")
 };
 
 function wireUiEvents() {
@@ -116,6 +155,17 @@ function wireUiEvents() {
     state.query = event.target.value.trim().toLowerCase();
     renderList();
   });
+  els.bottomSearchBar.addEventListener("submit", (event) => event.preventDefault());
+  els.searchFab.addEventListener("click", openSearchBar);
+  els.searchCloseButton.addEventListener("click", closeSearchBar);
+  els.searchClearButton.addEventListener("click", clearSearchQuery);
+  els.generationFab.addEventListener("click", openGenerationPanel);
+  els.generationBackdrop.addEventListener("click", closeGenerationPanel);
+  els.generationCloseButton.addEventListener("click", closeGenerationPanel);
+  els.generationMangaToggle.addEventListener("change", () => {
+    els.generationMangaStyleField.hidden = !els.generationMangaToggle.checked;
+  });
+  els.generationForm.addEventListener("submit", submitGenerationRequest);
 
   els.segments.forEach((button) => {
     button.addEventListener("click", () => {
@@ -163,6 +213,14 @@ function wireUiEvents() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !els.detailOperationPanel.hidden) {
       closeOperationPanel();
+      return;
+    }
+    if (event.key === "Escape" && state.generationPanel.open) {
+      closeGenerationPanel();
+      return;
+    }
+    if (event.key === "Escape" && state.isSearchOpen) {
+      closeSearchBar();
       return;
     }
     if (els.slidesViewer.hidden) return;
@@ -289,6 +347,7 @@ function renderList() {
   const filtered = getFilteredArticles();
   els.articleCount.textContent = `${filtered.length}件`;
   els.articleList.innerHTML = "";
+  syncChromeState();
 
   if (!filtered.length) {
     els.articleList.innerHTML = '<p class="empty-list">該当する記事がありません。</p>';
@@ -326,6 +385,7 @@ function getFilteredArticles() {
 
 function selectArticle(articleId, options = {}) {
   resetDetailEditing();
+  closeSearchBar({ keepQuery: true });
   state.selectedId = articleId;
   renderList();
   showDetail(getSelectedArticle(), { keepSheet: options.openSheet });
@@ -337,6 +397,7 @@ function getSelectedArticle() {
 
 function showDetail(article, options = {}) {
   if (!article) return;
+  closeSearchBar({ keepQuery: true });
   exitViewerFullscreen();
   document.body.classList.remove("slides-viewer-open");
   els.emptyWorkspace.hidden = true;
@@ -347,6 +408,7 @@ function showDetail(article, options = {}) {
   els.sheetBackdrop.hidden = !options.keepSheet || isTabletLayout();
 
   renderDetailContent(article);
+  syncChromeState();
 }
 
 function renderDetailContent(article) {
@@ -425,8 +487,6 @@ function renderViewArtifactDestination(article, artifactType) {
 
 function renderEditableArtifactDestination(article, artifactType) {
   const artifact = article[artifactType];
-  const group = document.createElement("div");
-  group.className = "destination-group artifact-edit-group";
   const row = document.createElement("div");
   row.className = "destination artifact-edit-destination";
   row.innerHTML = `
@@ -435,18 +495,14 @@ function renderEditableArtifactDestination(article, artifactType) {
       <span class="destination-title">${escapeHtml(artifactTitle(artifactType))}</span>
       <span class="destination-note">${escapeHtml(artifact.url ? "既存URLあり" : "URL未登録")}</span>
     </span>
-    <span class="artifact-status is-${escapeHtml(artifact.status)}">${escapeHtml(statusLabel(artifact.status))}</span>
+    <span class="destination-trailing">
+      <span class="artifact-status is-${escapeHtml(artifact.status)}">${escapeHtml(statusLabel(artifact.status))}</span>
+      <button class="artifact-action-button" type="button">${escapeHtml(artifact.url ? "URL編集" : "URL登録")}</button>
+    </span>
   `;
-  const actions = document.createElement("div");
-  actions.className = "artifact-edit-actions";
-  const urlButton = document.createElement("button");
-  urlButton.type = "button";
-  urlButton.className = "artifact-action-button";
-  urlButton.textContent = artifact.url ? "URL編集" : "URL登録";
+  const urlButton = row.querySelector(".artifact-action-button");
   urlButton.addEventListener("click", () => openArtifactUrlPanel(article, artifactType));
-  actions.appendChild(urlButton);
-  group.append(row, actions);
-  return group;
+  return row;
 }
 
 function artifactIcon(artifactType) {
@@ -702,7 +758,180 @@ function showSaveStatus(message) {
   }, 3000);
 }
 
+function openSearchBar() {
+  if (!isListSearchAvailable()) return;
+  state.isSearchOpen = true;
+  syncChromeState();
+  window.requestAnimationFrame(() => els.searchInput.focus());
+}
+
+function closeSearchBar(options = {}) {
+  state.isSearchOpen = false;
+  syncChromeState();
+  if (!options.keepQuery) return;
+  els.searchInput.value = state.query;
+}
+
+function clearSearchQuery() {
+  state.query = "";
+  els.searchInput.value = "";
+  renderList();
+  if (state.isSearchOpen) {
+    window.requestAnimationFrame(() => els.searchInput.focus());
+  }
+}
+
+function isDetailContextOpen() {
+  return Boolean(
+    !els.detailPanel.hidden &&
+    (isTabletLayout() || els.workspacePane.classList.contains("has-mobile-detail"))
+  );
+}
+
+function isListSearchAvailable() {
+  return !state.generationPanel.open && els.slidesViewer.hidden && !isDetailContextOpen();
+}
+
+function openGenerationPanel() {
+  if (!els.slidesViewer.hidden) return;
+  closeSearchBar({ keepQuery: true });
+  const article = isDetailContextOpen() ? getSelectedArticle() : null;
+  state.generationPanel = {
+    open: true,
+    submitting: false,
+    error: "",
+    sourceContext: article ? "detail" : "list"
+  };
+  els.generationUrlInput.value = article ? article.canonicalUrl || article.originalUrl || "" : "";
+  els.generationAudienceInput.value = "";
+  els.generationFocusInput.value = "";
+  els.generationPagesInput.value = "";
+  els.generationMangaToggle.checked = false;
+  els.generationMangaStyleField.hidden = true;
+  els.generationMangaArtStyleSelect.value = "F";
+  setGenerationMessage("");
+  syncGenerationSubmitting();
+  syncChromeState();
+  window.requestAnimationFrame(() => els.generationUrlInput.focus());
+}
+
+function closeGenerationPanel() {
+  if (state.generationPanel.submitting) return;
+  state.generationPanel.open = false;
+  state.generationPanel.error = "";
+  setGenerationMessage("");
+  syncChromeState();
+}
+
+function validateGenerationPayload() {
+  const sourceUrl = els.generationUrlInput.value.trim();
+  if (!sourceUrl) return { error: "ソースURLを入力してください" };
+  if (sourceUrl.length > 2048) return { error: "URLは2,048文字以内で入力してください" };
+  try {
+    const parsed = new URL(sourceUrl);
+    if (!/^https?:$/.test(parsed.protocol)) {
+      return { error: "URLは http:// または https:// で入力してください" };
+    }
+  } catch {
+    return { error: "URLの形式を確認してください" };
+  }
+
+  const pages = els.generationPagesInput.value.trim();
+  if (pages && !/^\d+$/.test(pages)) {
+    return { error: "目標スライド数は整数で入力してください" };
+  }
+
+  return {
+    payload: {
+      mode: "url",
+      urls: [sourceUrl],
+      audience: els.generationAudienceInput.value.trim(),
+      focus: els.generationFocusInput.value.trim(),
+      pages: pages ? Number(pages) : undefined,
+      manga: els.generationMangaToggle.checked,
+      mangaArtStyle: els.generationMangaToggle.checked ? els.generationMangaArtStyleSelect.value : undefined
+    }
+  };
+}
+
+async function submitGenerationRequest(event) {
+  event.preventDefault();
+  if (state.generationPanel.submitting) return;
+  if (!apiClient.hasApiUrl()) {
+    setGenerationMessage("GAS API URLが設定されていません", true);
+    return;
+  }
+  const result = validateGenerationPayload();
+  if (result.error) {
+    setGenerationMessage(result.error, true);
+    return;
+  }
+
+  state.generationPanel.submitting = true;
+  setGenerationMessage("");
+  syncGenerationSubmitting();
+  try {
+    await apiClient.post("requestGeneration", result.payload);
+    closeGenerationPanelAfterSubmit();
+    showSaveStatus("生成依頼をSlackへ送信しました");
+  } catch (error) {
+    state.generationPanel.submitting = false;
+    setGenerationMessage(error && error.message ? error.message : "生成依頼に失敗しました", true);
+    syncGenerationSubmitting();
+  }
+}
+
+function closeGenerationPanelAfterSubmit() {
+  state.generationPanel.open = false;
+  state.generationPanel.submitting = false;
+  state.generationPanel.error = "";
+  syncGenerationSubmitting();
+  syncChromeState();
+}
+
+function setGenerationMessage(message, isError = false) {
+  els.generationMessage.textContent = message || "";
+  els.generationMessage.classList.toggle("is-error", Boolean(isError));
+}
+
+function syncGenerationSubmitting() {
+  const submitting = state.generationPanel.submitting;
+  [
+    els.generationUrlInput,
+    els.generationAudienceInput,
+    els.generationFocusInput,
+    els.generationPagesInput,
+    els.generationMangaToggle,
+    els.generationMangaArtStyleSelect,
+    els.generationSubmitButton
+  ].forEach((node) => {
+    if (node) node.disabled = submitting;
+  });
+  els.generationSubmitButton.textContent = submitting ? "送信中..." : "生成を依頼";
+}
+
+function syncChromeState() {
+  const slidesOpen = !els.slidesViewer.hidden;
+  const detailOpen = isDetailContextOpen();
+  const generationOpen = state.generationPanel.open;
+  const searchAvailable = isListSearchAvailable();
+  const showGenerationFab = !slidesOpen && !generationOpen;
+  const showSearchFab = searchAvailable && !state.isSearchOpen;
+
+  els.floatingActions.hidden = !showGenerationFab && !showSearchFab;
+  els.generationFab.hidden = !showGenerationFab;
+  els.searchFab.hidden = !showSearchFab;
+  els.bottomSearchBar.hidden = !state.isSearchOpen || !searchAvailable;
+  els.generationPanel.hidden = !generationOpen;
+  els.generationBackdrop.hidden = !generationOpen;
+  document.body.classList.toggle("search-bar-open", state.isSearchOpen && searchAvailable);
+  document.body.classList.toggle("generation-panel-open", generationOpen);
+  document.body.classList.toggle("detail-context-open", detailOpen);
+}
+
 function openSlidesViewer(article) {
+  closeSearchBar({ keepQuery: true });
+  closeGenerationPanel();
   const presentationId = extractPresentationId(article.slides.url);
   state.currentPresentationId = presentationId;
   state.viewerPages = createViewerPlaceholders(article, presentationId);
@@ -722,6 +951,7 @@ function openSlidesViewer(article) {
   loadSlidePageWindow(0, getInitialPageCount());
   updateViewerViewportHeight();
   applyAutoImmersiveMode();
+  syncChromeState();
 }
 
 function createViewerPlaceholders(article, presentationId) {
@@ -912,11 +1142,13 @@ function closeMobileWorkspace() {
   document.body.classList.remove("sheet-open", "slides-viewer-open");
   els.sheetBackdrop.hidden = true;
   exitViewerFullscreen();
+  syncChromeState();
 }
 
 function returnFromSlidesViewer() {
   exitViewerFullscreen();
   showDetail(getSelectedArticle(), { keepSheet: true });
+  syncChromeState();
 }
 
 function toggleViewerFullscreen() {
@@ -1032,6 +1264,7 @@ function handleViewportChange() {
   if (document.body.classList.contains("sheet-open")) {
     els.sheetBackdrop.hidden = isTabletLayout() || !els.slidesViewer.hidden;
   }
+  syncChromeState();
 }
 
 function applyAutoImmersiveMode() {
