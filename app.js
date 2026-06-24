@@ -498,8 +498,8 @@ function renderEditableArtifactDestination(article, artifactType) {
       <span class="destination-note">${escapeHtml(artifact.url ? "既存URLあり" : "URL未登録")}</span>
     </span>
     <span class="destination-trailing">
-      <span class="artifact-status is-${escapeHtml(artifact.status)}">${escapeHtml(statusLabel(artifact.status))}</span>
       <button class="artifact-action-button" type="button">${escapeHtml(artifact.url ? "URL編集" : "URL登録")}</button>
+      <span class="artifact-status is-${escapeHtml(artifact.status)}">${escapeHtml(statusLabel(artifact.status))}</span>
     </span>
   `;
   const urlButton = row.querySelector(".artifact-action-button");
