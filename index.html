@@ -47,11 +47,14 @@
               <h2 id="detailTitle"></h2>
             </div>
           </div>
-          <label id="editModeControl" class="edit-mode-control" hidden>
-            <span>編集</span>
-            <input id="editModeToggle" type="checkbox" role="switch" aria-label="編集モード">
-            <span class="edit-mode-track" aria-hidden="true"><span></span></span>
-          </label>
+          <div class="detail-head-actions">
+            <label id="editModeControl" class="edit-mode-control" hidden>
+              <span>編集</span>
+              <input id="editModeToggle" type="checkbox" role="switch" aria-label="編集モード">
+              <span class="edit-mode-track" aria-hidden="true"><span></span></span>
+            </label>
+            <button id="detailGenerationButton" class="detail-generation-button" type="button" aria-label="この記事から生成依頼">＋</button>
+          </div>
         </header>
         <p id="detailHeadline" class="detail-headline"></p>
         <div id="detailActions" class="destination-grid"></div>
@@ -94,7 +97,7 @@
 
   <div id="floatingActions" class="floating-actions" aria-label="クイック操作">
     <button id="generationFab" class="fab-button is-primary" type="button" aria-label="生成依頼を開く">＋</button>
-    <button id="searchFab" class="fab-button" type="button" aria-label="検索を開く">⌕</button>
+    <button id="searchFab" class="fab-button is-search" type="button" aria-label="検索を開く">⌕</button>
   </div>
 
   <form id="bottomSearchBar" class="bottom-search-bar" role="search" hidden>
@@ -119,36 +122,53 @@
           <span>ソースURL</span>
           <input id="generationUrlInput" type="url" inputmode="url" autocomplete="url" placeholder="https://example.com/article">
         </label>
+        <fieldset class="generation-targets">
+          <legend>生成対象</legend>
+          <label class="generation-check" for="generationSlidesToggle">
+            <input id="generationSlidesToggle" type="checkbox" checked>
+            <span>Googleスライド</span>
+          </label>
+          <label class="generation-check" for="generationMangaToggle">
+            <input id="generationMangaToggle" type="checkbox" checked>
+            <span>漫画 / NotebookLM</span>
+          </label>
+        </fieldset>
         <div class="generation-options">
           <label class="generation-field" for="generationAudienceInput">
             <span>対象読者</span>
             <input id="generationAudienceInput" type="text" autocomplete="off" placeholder="例: 経営層、開発者、営業向け">
-          </label>
-          <label class="generation-field" for="generationPagesInput">
-            <span>目標スライド数</span>
-            <input id="generationPagesInput" type="number" min="1" step="1" inputmode="numeric" placeholder="例: 8">
           </label>
           <label class="generation-field is-wide" for="generationFocusInput">
             <span>重点テーマ</span>
             <input id="generationFocusInput" type="text" autocomplete="off" placeholder="例: 日本市場への影響を中心に">
           </label>
         </div>
-        <label class="generation-check" for="generationMangaToggle">
-          <input id="generationMangaToggle" type="checkbox">
-          <span>漫画も生成</span>
-        </label>
-        <label id="generationMangaStyleField" class="generation-field" for="generationMangaArtStyleSelect" hidden>
-          <span>画風</span>
-          <select id="generationMangaArtStyleSelect">
-            <option value="A">A 王道少年漫画</option>
-            <option value="B">B 少女漫画</option>
-            <option value="C">C 4コマギャグ</option>
-            <option value="D">D 青年劇画</option>
-            <option value="E">E アメコミ</option>
-            <option value="F" selected>F 絵本風</option>
-            <option value="G">G レトロ昭和漫画</option>
-          </select>
-        </label>
+        <div id="generationMangaFields" class="generation-manga-fields">
+          <label class="generation-field" for="generationMangaArtStyleSelect">
+            <span>画風</span>
+            <select id="generationMangaArtStyleSelect">
+              <option value="A">A 王道少年漫画</option>
+              <option value="B">B 少女漫画</option>
+              <option value="C">C 4コマギャグ</option>
+              <option value="D">D 青年劇画</option>
+              <option value="E">E アメコミ</option>
+              <option value="F" selected>F 絵本風</option>
+              <option value="G">G レトロ昭和漫画</option>
+            </select>
+          </label>
+          <label class="generation-field" for="generationMangaTreatmentSelect">
+            <span>題材の扱い方</span>
+            <select id="generationMangaTreatmentSelect">
+              <option value="A">A 原作忠実</option>
+              <option value="B" selected>B 脚色あり</option>
+              <option value="C">C 完全創作</option>
+            </select>
+          </label>
+          <label class="generation-field is-wide" for="generationMangaGenreInput">
+            <span>漫画ジャンル</span>
+            <input id="generationMangaGenreInput" type="text" autocomplete="off" placeholder="例: 教育・解説">
+          </label>
+        </div>
         <p id="generationMessage" class="form-message" role="alert" aria-live="polite"></p>
       </div>
       <footer class="generation-footer">

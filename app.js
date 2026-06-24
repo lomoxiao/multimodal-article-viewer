@@ -131,6 +131,7 @@ const els = {
   saveStatus: document.getElementById("saveStatus"),
   floatingActions: document.getElementById("floatingActions"),
   generationFab: document.getElementById("generationFab"),
+  detailGenerationButton: document.getElementById("detailGenerationButton"),
   searchFab: document.getElementById("searchFab"),
   bottomSearchBar: document.getElementById("bottomSearchBar"),
   searchClearButton: document.getElementById("searchClearButton"),
@@ -140,12 +141,14 @@ const els = {
   generationForm: document.getElementById("generationForm"),
   generationCloseButton: document.getElementById("generationCloseButton"),
   generationUrlInput: document.getElementById("generationUrlInput"),
+  generationSlidesToggle: document.getElementById("generationSlidesToggle"),
   generationAudienceInput: document.getElementById("generationAudienceInput"),
   generationFocusInput: document.getElementById("generationFocusInput"),
-  generationPagesInput: document.getElementById("generationPagesInput"),
   generationMangaToggle: document.getElementById("generationMangaToggle"),
-  generationMangaStyleField: document.getElementById("generationMangaStyleField"),
+  generationMangaFields: document.getElementById("generationMangaFields"),
   generationMangaArtStyleSelect: document.getElementById("generationMangaArtStyleSelect"),
+  generationMangaTreatmentSelect: document.getElementById("generationMangaTreatmentSelect"),
+  generationMangaGenreInput: document.getElementById("generationMangaGenreInput"),
   generationMessage: document.getElementById("generationMessage"),
   generationSubmitButton: document.getElementById("generationSubmitButton")
 };
@@ -160,10 +163,11 @@ function wireUiEvents() {
   els.searchCloseButton.addEventListener("click", closeSearchBar);
   els.searchClearButton.addEventListener("click", clearSearchQuery);
   els.generationFab.addEventListener("click", openGenerationPanel);
+  els.detailGenerationButton.addEventListener("click", openGenerationPanel);
   els.generationBackdrop.addEventListener("click", closeGenerationPanel);
   els.generationCloseButton.addEventListener("click", closeGenerationPanel);
   els.generationMangaToggle.addEventListener("change", () => {
-    els.generationMangaStyleField.hidden = !els.generationMangaToggle.checked;
+    syncGenerationTargetFields();
   });
   els.generationForm.addEventListener("submit", submitGenerationRequest);
 
@@ -595,7 +599,11 @@ function openArtifactUrlPanel(article, artifactType) {
   els.detailPanel.classList.add("has-operation-panel");
   els.detailOperationBackdrop.hidden = false;
   els.detailOperationPanel.hidden = false;
-  window.requestAnimationFrame(() => els.detailOperationPanel.querySelector(".operation-url-input")?.focus());
+  window.requestAnimationFrame(() => {
+    const input = els.detailOperationPanel.querySelector(".operation-url-input");
+    input?.focus();
+    if (state.operationPanel.value) input?.select();
+  });
 }
 
 function renderOperationPanel() {
@@ -803,12 +811,14 @@ function openGenerationPanel() {
     sourceContext: article ? "detail" : "list"
   };
   els.generationUrlInput.value = article ? article.canonicalUrl || article.originalUrl || "" : "";
+  els.generationSlidesToggle.checked = true;
   els.generationAudienceInput.value = "";
   els.generationFocusInput.value = "";
-  els.generationPagesInput.value = "";
-  els.generationMangaToggle.checked = false;
-  els.generationMangaStyleField.hidden = true;
+  els.generationMangaToggle.checked = true;
   els.generationMangaArtStyleSelect.value = "F";
+  els.generationMangaTreatmentSelect.value = "B";
+  els.generationMangaGenreInput.value = "";
+  syncGenerationTargetFields();
   setGenerationMessage("");
   syncGenerationSubmitting();
   syncChromeState();
@@ -836,20 +846,21 @@ function validateGenerationPayload() {
     return { error: "URLの形式を確認してください" };
   }
 
-  const pages = els.generationPagesInput.value.trim();
-  if (pages && !/^\d+$/.test(pages)) {
-    return { error: "目標スライド数は整数で入力してください" };
-  }
+  const slides = els.generationSlidesToggle.checked;
+  const manga = els.generationMangaToggle.checked;
+  if (!slides && !manga) return { error: "生成対象を1つ以上選択してください" };
 
   return {
     payload: {
       mode: "url",
       urls: [sourceUrl],
+      slides,
       audience: els.generationAudienceInput.value.trim(),
       focus: els.generationFocusInput.value.trim(),
-      pages: pages ? Number(pages) : undefined,
-      manga: els.generationMangaToggle.checked,
-      mangaArtStyle: els.generationMangaToggle.checked ? els.generationMangaArtStyleSelect.value : undefined
+      manga,
+      mangaArtStyle: manga ? els.generationMangaArtStyleSelect.value : undefined,
+      mangaTreatment: manga ? els.generationMangaTreatmentSelect.value : undefined,
+      mangaGenre: manga ? els.generationMangaGenreInput.value.trim() : undefined
     }
   };
 }
@@ -894,15 +905,21 @@ function setGenerationMessage(message, isError = false) {
   els.generationMessage.classList.toggle("is-error", Boolean(isError));
 }
 
+function syncGenerationTargetFields() {
+  els.generationMangaFields.hidden = !els.generationMangaToggle.checked;
+}
+
 function syncGenerationSubmitting() {
   const submitting = state.generationPanel.submitting;
   [
     els.generationUrlInput,
+    els.generationSlidesToggle,
     els.generationAudienceInput,
     els.generationFocusInput,
-    els.generationPagesInput,
     els.generationMangaToggle,
     els.generationMangaArtStyleSelect,
+    els.generationMangaTreatmentSelect,
+    els.generationMangaGenreInput,
     els.generationSubmitButton
   ].forEach((node) => {
     if (node) node.disabled = submitting;
@@ -915,11 +932,13 @@ function syncChromeState() {
   const detailOpen = isDetailContextOpen();
   const generationOpen = state.generationPanel.open;
   const searchAvailable = isListSearchAvailable();
-  const showGenerationFab = !slidesOpen && !generationOpen;
+  const showGenerationFab = !slidesOpen && !generationOpen && !detailOpen;
+  const showDetailGenerationButton = !slidesOpen && !generationOpen && detailOpen;
   const showSearchFab = searchAvailable && !state.isSearchOpen;
 
   els.floatingActions.hidden = !showGenerationFab && !showSearchFab;
   els.generationFab.hidden = !showGenerationFab;
+  els.detailGenerationButton.hidden = !showDetailGenerationButton;
   els.searchFab.hidden = !showSearchFab;
   els.bottomSearchBar.hidden = !state.isSearchOpen || !searchAvailable;
   els.generationPanel.hidden = !generationOpen;
