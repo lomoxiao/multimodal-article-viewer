@@ -131,7 +131,6 @@ const els = {
   saveStatus: document.getElementById("saveStatus"),
   floatingActions: document.getElementById("floatingActions"),
   generationFab: document.getElementById("generationFab"),
-  detailGenerationButton: document.getElementById("detailGenerationButton"),
   searchFab: document.getElementById("searchFab"),
   bottomSearchBar: document.getElementById("bottomSearchBar"),
   searchClearButton: document.getElementById("searchClearButton"),
@@ -148,7 +147,7 @@ const els = {
   generationMangaFields: document.getElementById("generationMangaFields"),
   generationMangaArtStyleSelect: document.getElementById("generationMangaArtStyleSelect"),
   generationMangaTreatmentSelect: document.getElementById("generationMangaTreatmentSelect"),
-  generationMangaGenreInput: document.getElementById("generationMangaGenreInput"),
+  generationMangaGenreSelect: document.getElementById("generationMangaGenreSelect"),
   generationMessage: document.getElementById("generationMessage"),
   generationSubmitButton: document.getElementById("generationSubmitButton")
 };
@@ -163,7 +162,6 @@ function wireUiEvents() {
   els.searchCloseButton.addEventListener("click", closeSearchBar);
   els.searchClearButton.addEventListener("click", clearSearchQuery);
   els.generationFab.addEventListener("click", openGenerationPanel);
-  els.detailGenerationButton.addEventListener("click", openGenerationPanel);
   els.generationBackdrop.addEventListener("click", closeGenerationPanel);
   els.generationCloseButton.addEventListener("click", closeGenerationPanel);
   els.generationMangaToggle.addEventListener("change", () => {
@@ -811,13 +809,13 @@ function openGenerationPanel() {
     sourceContext: article ? "detail" : "list"
   };
   els.generationUrlInput.value = article ? article.canonicalUrl || article.originalUrl || "" : "";
-  els.generationSlidesToggle.checked = true;
+  els.generationSlidesToggle.checked = false;
   els.generationAudienceInput.value = "";
   els.generationFocusInput.value = "";
-  els.generationMangaToggle.checked = true;
+  els.generationMangaToggle.checked = false;
   els.generationMangaArtStyleSelect.value = "F";
   els.generationMangaTreatmentSelect.value = "B";
-  els.generationMangaGenreInput.value = "";
+  els.generationMangaGenreSelect.value = "";
   syncGenerationTargetFields();
   setGenerationMessage("");
   syncGenerationSubmitting();
@@ -848,7 +846,7 @@ function validateGenerationPayload() {
 
   const slides = els.generationSlidesToggle.checked;
   const manga = els.generationMangaToggle.checked;
-  if (!slides && !manga) return { error: "生成対象を1つ以上選択してください" };
+  if (!slides && !manga) return { error: "生成対象を選択してください" };
 
   return {
     payload: {
@@ -860,7 +858,7 @@ function validateGenerationPayload() {
       manga,
       mangaArtStyle: manga ? els.generationMangaArtStyleSelect.value : undefined,
       mangaTreatment: manga ? els.generationMangaTreatmentSelect.value : undefined,
-      mangaGenre: manga ? els.generationMangaGenreInput.value.trim() : undefined
+      mangaGenre: manga && els.generationMangaGenreSelect.value ? els.generationMangaGenreSelect.value : undefined
     }
   };
 }
@@ -882,9 +880,9 @@ async function submitGenerationRequest(event) {
   setGenerationMessage("");
   syncGenerationSubmitting();
   try {
-    await apiClient.post("requestGeneration", result.payload);
+    const response = await apiClient.post("requestGeneration", result.payload);
     closeGenerationPanelAfterSubmit();
-    showSaveStatus("生成依頼をSlackへ送信しました");
+    showSaveStatus(formatGenerationResultMessage(result.payload, response));
   } catch (error) {
     state.generationPanel.submitting = false;
     setGenerationMessage(error && error.message ? error.message : "生成依頼に失敗しました", true);
@@ -898,6 +896,18 @@ function closeGenerationPanelAfterSubmit() {
   state.generationPanel.error = "";
   syncGenerationSubmitting();
   syncChromeState();
+}
+
+function formatGenerationResultMessage(payload, response) {
+  const posted = [];
+  if (payload.slides && response && response.slackTs) posted.push("Googleスライド");
+  if (payload.manga && response && response.mangaSlackTs) posted.push("漫画");
+  if (!posted.length) {
+    if (payload.slides) posted.push("Googleスライド");
+    if (payload.manga) posted.push("漫画");
+  }
+  const tracking = response && response.trackingId ? `（${response.trackingId}）` : "";
+  return `生成依頼をSlackへ送信しました: ${posted.join(" / ")}${tracking}`;
 }
 
 function setGenerationMessage(message, isError = false) {
@@ -919,7 +929,7 @@ function syncGenerationSubmitting() {
     els.generationMangaToggle,
     els.generationMangaArtStyleSelect,
     els.generationMangaTreatmentSelect,
-    els.generationMangaGenreInput,
+    els.generationMangaGenreSelect,
     els.generationSubmitButton
   ].forEach((node) => {
     if (node) node.disabled = submitting;
@@ -932,13 +942,11 @@ function syncChromeState() {
   const detailOpen = isDetailContextOpen();
   const generationOpen = state.generationPanel.open;
   const searchAvailable = isListSearchAvailable();
-  const showGenerationFab = !slidesOpen && !generationOpen && !detailOpen;
-  const showDetailGenerationButton = !slidesOpen && !generationOpen && detailOpen;
+  const showGenerationFab = !slidesOpen && !generationOpen;
   const showSearchFab = searchAvailable && !state.isSearchOpen;
 
   els.floatingActions.hidden = !showGenerationFab && !showSearchFab;
   els.generationFab.hidden = !showGenerationFab;
-  els.detailGenerationButton.hidden = !showDetailGenerationButton;
   els.searchFab.hidden = !showSearchFab;
   els.bottomSearchBar.hidden = !state.isSearchOpen || !searchAvailable;
   els.generationPanel.hidden = !generationOpen;

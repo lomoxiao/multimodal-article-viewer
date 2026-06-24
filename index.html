@@ -53,7 +53,6 @@
               <input id="editModeToggle" type="checkbox" role="switch" aria-label="編集モード">
               <span class="edit-mode-track" aria-hidden="true"><span></span></span>
             </label>
-            <button id="detailGenerationButton" class="detail-generation-button" type="button" aria-label="この記事から生成依頼">＋</button>
           </div>
         </header>
         <p id="detailHeadline" class="detail-headline"></p>
@@ -125,11 +124,11 @@
         <fieldset class="generation-targets">
           <legend>生成対象</legend>
           <label class="generation-check" for="generationSlidesToggle">
-            <input id="generationSlidesToggle" type="checkbox" checked>
+            <input id="generationSlidesToggle" type="checkbox">
             <span>Googleスライド</span>
           </label>
           <label class="generation-check" for="generationMangaToggle">
-            <input id="generationMangaToggle" type="checkbox" checked>
+            <input id="generationMangaToggle" type="checkbox">
             <span>漫画 / NotebookLM</span>
           </label>
         </fieldset>
@@ -143,7 +142,7 @@
             <input id="generationFocusInput" type="text" autocomplete="off" placeholder="例: 日本市場への影響を中心に">
           </label>
         </div>
-        <div id="generationMangaFields" class="generation-manga-fields">
+        <div id="generationMangaFields" class="generation-manga-fields" hidden>
           <label class="generation-field" for="generationMangaArtStyleSelect">
             <span>画風</span>
             <select id="generationMangaArtStyleSelect">
@@ -164,9 +163,17 @@
               <option value="C">C 完全創作</option>
             </select>
           </label>
-          <label class="generation-field is-wide" for="generationMangaGenreInput">
+          <label class="generation-field is-wide" for="generationMangaGenreSelect">
             <span>漫画ジャンル</span>
-            <input id="generationMangaGenreInput" type="text" autocomplete="off" placeholder="例: 教育・解説">
+            <select id="generationMangaGenreSelect">
+              <option value="">未指定（ソース内容から判断）</option>
+              <option value="教育・解説">教育・解説</option>
+              <option value="冒険・バトル">冒険・バトル</option>
+              <option value="恋愛・ヒューマンドラマ">恋愛・ヒューマンドラマ</option>
+              <option value="SF・ファンタジー">SF・ファンタジー</option>
+              <option value="ミステリー・サスペンス">ミステリー・サスペンス</option>
+              <option value="日常・ギャグ">日常・ギャグ</option>
+            </select>
           </label>
         </div>
         <p id="generationMessage" class="form-message" role="alert" aria-live="polite"></p>
