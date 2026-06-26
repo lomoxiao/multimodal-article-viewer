@@ -51,6 +51,10 @@ const state = {
     submitting: false,
     error: "",
     sourceContext: "list"
+  },
+  sharedUrl: {
+    value: "",
+    consumed: false
   }
 };
 
@@ -161,7 +165,7 @@ function wireUiEvents() {
   els.searchFab.addEventListener("click", openSearchBar);
   els.searchCloseButton.addEventListener("click", closeSearchBar);
   els.searchClearButton.addEventListener("click", clearSearchQuery);
-  els.generationFab.addEventListener("click", openGenerationPanel);
+  els.generationFab.addEventListener("click", () => openGenerationPanel());
   els.generationBackdrop.addEventListener("click", closeGenerationPanel);
   els.generationCloseButton.addEventListener("click", closeGenerationPanel);
   els.generationMangaToggle.addEventListener("change", () => {
@@ -798,7 +802,7 @@ function isListSearchAvailable() {
   return !state.generationPanel.open && els.slidesViewer.hidden && !isDetailContextOpen();
 }
 
-function openGenerationPanel() {
+function openGenerationPanel(options = {}) {
   if (!els.slidesViewer.hidden) return;
   closeSearchBar({ keepQuery: true });
   const article = isDetailContextOpen() ? getSelectedArticle() : null;
@@ -808,7 +812,7 @@ function openGenerationPanel() {
     error: "",
     sourceContext: article ? "detail" : "list"
   };
-  els.generationUrlInput.value = article ? article.canonicalUrl || article.originalUrl || "" : "";
+  els.generationUrlInput.value = options.sourceUrl || (article ? article.canonicalUrl || article.originalUrl || "" : "");
   els.generationSlidesToggle.checked = false;
   els.generationAudienceInput.value = "";
   els.generationFocusInput.value = "";
@@ -1494,6 +1498,32 @@ function createSlidesPreviewUrl(presentationId) {
   return `https://docs.google.com/presentation/d/${encodeURIComponent(presentationId)}/preview`;
 }
 
+function readSharedUrlFromQuery() {
+  const value = new URLSearchParams(window.location.search).get("url");
+  if (!value || value.length > 2048) return "";
+
+  try {
+    const parsed = new URL(value);
+    return /^https?:$/.test(parsed.protocol) ? parsed.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function removeSharedUrlQueryParam() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("url")) return;
+  url.searchParams.delete("url");
+  window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+}
+
+function applySharedUrlIfNeeded() {
+  if (!state.sharedUrl.value || state.sharedUrl.consumed) return;
+  state.sharedUrl.consumed = true;
+  openGenerationPanel({ sourceUrl: state.sharedUrl.value });
+  removeSharedUrlQueryParam();
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -1569,6 +1599,7 @@ function setupAuth() {
       els.loginPassword.value = "";
       startEditorAccessSubscription(user.uid);
       startArticlesSubscription();
+      applySharedUrlIfNeeded();
     } else {
       stopArticlesSubscription();
       stopEditorAccessSubscription();
@@ -1582,5 +1613,6 @@ function setupAuth() {
   });
 }
 
+state.sharedUrl.value = readSharedUrlFromQuery();
 wireUiEvents();
 setupAuth();
