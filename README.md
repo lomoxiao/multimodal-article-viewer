@@ -1,4 +1,4 @@
-い# multimodal-article-viewer
+# multimodal-article-viewer
 
 iPhone/iPad ブラウザ向けの、記事・Google Slides・NotebookLM 漫画導線をまとめる静的Webアプリの初期実装です。
 
@@ -29,11 +29,17 @@ npm.cmd run dev
 - `title`: 記事タイトル
 - `source.kind`: `web` または `youtube`
 - `source.headline`: 一覧/詳細に表示するヘッドライン
-- `slides.status`: Google Slides生成状態
+- `slides.status`: `pending | processing | action_required | failed | completed`
+- `slides.stage`: 現在の処理工程（例: `slides_generation`）
+- `slides.statusMessage`: viewer向けの安全な説明
 - `slides.url`: Google Slides URL
-- `manga.status`: NotebookLM/漫画生成状態
+- `manga.status`: `pending | processing | action_required | failed | completed`
+- `manga.stage`: `preparing | drive_registration | source_registration | deck_generation | url_retrieval`
+- `manga.statusMessage`: viewer向けの安全な説明
 - `manga.url`: NotebookLM外部URL
 - `updatedAt`: 最終更新日時
+
+`processing`、`action_required`、`failed`は詳細画面のステータスチップから処理状況を確認できます。技術的なエラーは`/artifactDiagnostics/{articleId}/{artifactType}`へ分離して保存され、editorだけが閲覧できます。
 
 ## 成果物URLの手動登録
 
@@ -59,6 +65,8 @@ editor権限を持つユーザーは、詳細画面の編集スイッチからGo
 /access/viewers/{uid} = true
 /access/editors/{uid} = true
 ```
+
+`config.js`の`NOTEBOOKLM_URL`には、処理状況パネルの「NotebookLMを開く」で使用する固定ノートブックURLを設定できます。未設定時はNotebookLMトップページを使用します。
 
 配布用Rules雛形は`database.rules.json`です。Firebase ConsoleまたはFirebase CLIで本番Rulesへ反映してください。既存のviewer/editor権限モデルを使い、editorには`slides`、`manga`、記事の`updatedAt`だけを書き換える権限を与えます。`title`、`source`、記事削除は許可しません。
 

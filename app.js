@@ -43,7 +43,10 @@ const state = {
     value: "",
     submitting: false,
     dirty: false,
-    error: ""
+    error: "",
+    diagnostic: null,
+    diagnosticLoading: false,
+    returnFocus: null
   },
   isSearchOpen: false,
   generationPanel: {
@@ -217,6 +220,10 @@ function wireUiEvents() {
     window.visualViewport.addEventListener("resize", handleViewportChange);
   }
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Tab" && !els.detailOperationPanel.hidden) {
+      trapOperationPanelFocus(event);
+      return;
+    }
     if (event.key === "Escape" && !els.detailOperationPanel.hidden) {
       closeOperationPanel();
       return;
@@ -242,6 +249,22 @@ function wireUiEvents() {
     wakeViewerControls();
   });
 
+}
+
+function trapOperationPanelFocus(event) {
+  const focusable = Array.from(
+    els.detailOperationPanel.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')
+  );
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function startArticlesSubscription() {
@@ -335,9 +358,21 @@ function normalizeArticle(raw) {
       kind: source.kind === "youtube" ? "youtube" : "web",
       headline: source.headline || ""
     },
-    slides: { status: slides.status || "pending", url: slides.url || "" },
-    manga: { status: manga.status || "pending", url: manga.url || "" },
+    slides: normalizeArtifact(slides),
+    manga: normalizeArtifact(manga),
     updatedAt: article.updatedAt || article.registeredAt || ""
+  };
+}
+
+function normalizeArtifact(artifact) {
+  return {
+    status: artifact.status || "pending",
+    stage: artifact.stage || "",
+    statusMessage: artifact.statusMessage || "",
+    url: artifact.url || "",
+    origin: artifact.origin || "",
+    locked: Boolean(artifact.locked),
+    updatedAt: artifact.updatedAt || ""
   };
 }
 
@@ -446,16 +481,19 @@ function renderDetailContent(article) {
 
 function createDestinationButton(item) {
   const isExternalLink = item.enabled && Boolean(item.externalUrl);
-  const control = document.createElement(isExternalLink ? "a" : "button");
+  const hasPrimaryAction = item.enabled && typeof item.action === "function";
+  const control = document.createElement(isExternalLink ? "a" : hasPrimaryAction ? "button" : "div");
   control.className = "destination";
-  control.setAttribute("aria-disabled", item.enabled ? "false" : "true");
+  control.setAttribute("aria-disabled", item.enabled || item.statusInteractive ? "false" : "true");
   if (isExternalLink) {
     configureExternalLink(control, item.externalUrl);
-  } else {
+  } else if (hasPrimaryAction) {
     control.type = "button";
   }
   const statusMarkup = item.status
-    ? `<span class="artifact-status is-${escapeHtml(item.status)}">${escapeHtml(statusLabel(item.status))}</span>`
+    ? item.statusInteractive
+      ? `<button class="artifact-status is-${escapeHtml(item.status)} is-interactive" type="button" aria-haspopup="dialog">${escapeHtml(statusLabel(item.status))}<span aria-hidden="true">›</span></button>`
+      : `<span class="artifact-status is-${escapeHtml(item.status)}">${escapeHtml(statusLabel(item.status))}</span>`
     : "";
   control.innerHTML = `
     ${createDestinationIconMarkup(item.icon)}
@@ -468,11 +506,17 @@ function createDestinationButton(item) {
       <span class="destination-cue" aria-hidden="true">${item.enabled ? (isExternalLink ? "↗" : "›") : ""}</span>
     </span>
   `;
-  if (!isExternalLink) {
+  if (hasPrimaryAction) {
     control.addEventListener("click", () => {
-      if (item.enabled) item.action();
+      item.action();
     });
   }
+  const statusButton = control.querySelector(".artifact-status.is-interactive");
+  statusButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    item.statusAction(statusButton);
+  });
   return control;
 }
 
@@ -484,6 +528,8 @@ function renderViewArtifactDestination(article, artifactType) {
     title: artifactTitle(artifactType),
     note: artifactViewNote(artifactType, artifact),
     status: artifact.status,
+    statusInteractive: hasStatusDetails(artifact.status),
+    statusAction: (trigger) => openStatusDetailPanel(article, artifactType, trigger),
     enabled: completed
   };
   if (artifactType === "slides") item.action = () => openSlidesViewer(article);
@@ -503,11 +549,15 @@ function renderEditableArtifactDestination(article, artifactType) {
     </span>
     <span class="destination-trailing">
       <button class="artifact-action-button" type="button">${escapeHtml(artifact.url ? "URL編集" : "URL登録")}</button>
-      <span class="artifact-status is-${escapeHtml(artifact.status)}">${escapeHtml(statusLabel(artifact.status))}</span>
+      ${hasStatusDetails(artifact.status)
+        ? `<button class="artifact-status is-${escapeHtml(artifact.status)} is-interactive" type="button" aria-haspopup="dialog">${escapeHtml(statusLabel(artifact.status))}<span aria-hidden="true">›</span></button>`
+        : `<span class="artifact-status is-${escapeHtml(artifact.status)}">${escapeHtml(statusLabel(artifact.status))}</span>`}
     </span>
   `;
   const urlButton = row.querySelector(".artifact-action-button");
   urlButton.addEventListener("click", () => openArtifactUrlPanel(article, artifactType));
+  const statusButton = row.querySelector(".artifact-status.is-interactive");
+  statusButton?.addEventListener("click", () => openStatusDetailPanel(article, artifactType, statusButton));
   return row;
 }
 
@@ -524,8 +574,13 @@ function artifactViewNote(artifactType, artifact) {
     return artifactType === "slides" ? "ビューアで開く" : "NotebookLMを外部で開く";
   }
   if (artifact.status === "processing") return "生成中";
+  if (artifact.status === "action_required") return artifact.statusMessage || "手動での確認が必要です";
   if (artifact.status === "failed") return "生成に失敗しました";
-  return "URL未登録";
+  return artifact.status === "pending" ? "未着手" : "URL未登録";
+}
+
+function hasStatusDetails(status) {
+  return status === "processing" || status === "action_required" || status === "failed";
 }
 
 function getSourceDestinationIcon(article) {
@@ -587,15 +642,18 @@ function validateGoogleSlidesUrl(value) {
   }
 }
 
-function openArtifactUrlPanel(article, artifactType) {
-  if (!state.isEditor || state.detailMode !== "edit") return;
+function openArtifactUrlPanel(article, artifactType, options = {}) {
+  if (!state.isEditor || (state.detailMode !== "edit" && !options.allowViewMode)) return;
   state.operationPanel = {
     type: `${artifactType}-url`,
     articleId: article.articleId,
     value: article[artifactType].url || "",
     submitting: false,
     dirty: false,
-    error: ""
+    error: "",
+    diagnostic: null,
+    diagnosticLoading: false,
+    returnFocus: document.activeElement
   };
   renderOperationPanel();
   els.detailPanel.classList.add("has-operation-panel");
@@ -608,8 +666,58 @@ function openArtifactUrlPanel(article, artifactType) {
   });
 }
 
+function openStatusDetailPanel(article, artifactType, trigger) {
+  if (!hasStatusDetails(article[artifactType].status)) return;
+  state.operationPanel = {
+    type: `${artifactType}-status`,
+    articleId: article.articleId,
+    value: "",
+    submitting: false,
+    dirty: false,
+    error: "",
+    diagnostic: null,
+    diagnosticLoading: state.isEditor,
+    returnFocus: trigger || document.activeElement
+  };
+  showOperationPanel();
+  renderOperationPanel();
+  window.requestAnimationFrame(() => els.detailOperationPanel.querySelector(".operation-close-button")?.focus());
+  if (state.isEditor) loadArtifactDiagnostic(article, artifactType);
+}
+
+function showOperationPanel() {
+  els.detailPanel.classList.add("has-operation-panel");
+  els.detailOperationBackdrop.hidden = false;
+  els.detailOperationPanel.hidden = false;
+  els.detailOperationPanel.setAttribute("role", "dialog");
+  els.detailOperationPanel.setAttribute("aria-modal", "true");
+}
+
+async function loadArtifactDiagnostic(article, artifactType) {
+  if (!/^[^.#$\[\]\/]+$/.test(article.articleId)) return;
+  try {
+    const snapshot = await firebase.database().ref(`artifactDiagnostics/${article.articleId}/${artifactType}`).once("value");
+    if (state.operationPanel.type !== `${artifactType}-status` || state.operationPanel.articleId !== article.articleId) return;
+    state.operationPanel.diagnostic = snapshot.exists() ? snapshot.val() : null;
+  } catch (error) {
+    state.operationPanel.error = /permission_denied/i.test(String(error && error.message))
+      ? "技術情報の閲覧権限がありません"
+      : "技術情報を取得できませんでした";
+  } finally {
+    if (state.operationPanel.type === `${artifactType}-status` && state.operationPanel.articleId === article.articleId) {
+      state.operationPanel.diagnosticLoading = false;
+      renderOperationPanel();
+    }
+  }
+}
+
 function renderOperationPanel() {
   const article = articles.find((item) => item.articleId === state.operationPanel.articleId);
+  const statusArtifactType = getStatusArtifactType();
+  if (article && statusArtifactType) {
+    renderStatusDetailPanel(article, statusArtifactType);
+    return;
+  }
   const artifactType = getOperationArtifactType();
   if (!article || !artifactType) {
     closeOperationPanel({ force: true });
@@ -679,6 +787,81 @@ function renderOperationPanel() {
   });
 }
 
+function renderStatusDetailPanel(article, artifactType) {
+  const artifact = article[artifactType];
+  const diagnostic = state.operationPanel.diagnostic;
+  const notebookUrl = (window.MULTIMODAL_VIEWER_CONFIG || {}).NOTEBOOKLM_URL || "https://notebooklm.google.com/";
+  const showNotebookAction = artifactType === "manga" &&
+    (artifact.stage === "deck_generation" || artifact.stage === "url_retrieval");
+  const technicalMarkup = state.isEditor
+    ? `<section class="status-technical">
+        <h3>技術情報</h3>
+        ${state.operationPanel.diagnosticLoading
+          ? "<p>読み込み中...</p>"
+          : diagnostic
+            ? `<dl class="status-detail-list">
+                <div><dt>コード</dt><dd>${escapeHtml(diagnostic.code || "-")}</dd></div>
+                ${diagnostic.jobId ? `<div><dt>Job ID</dt><dd>${escapeHtml(diagnostic.jobId)}</dd></div>` : ""}
+              </dl><pre>${escapeHtml(diagnostic.detail || "詳細なし")}</pre>`
+            : `<p>${escapeHtml(state.operationPanel.error || "技術情報はありません")}</p>`}
+      </section>`
+    : "";
+
+  els.detailOperationPanel.innerHTML = `
+    <div class="operation-panel-form status-detail-panel">
+      <header class="operation-panel-head">
+        <button class="operation-close-button" type="button" aria-label="処理状況を閉じる">×</button>
+        ${createDestinationIconMarkup(artifactIcon(artifactType))}
+        <span class="operation-title-copy"><strong>処理状況</strong><small>${escapeHtml(artifactTitle(artifactType))}</small></span>
+      </header>
+      <div class="operation-panel-body">
+        <dl class="status-detail-list">
+          <div><dt>成果物</dt><dd>${escapeHtml(artifactTitle(artifactType))}</dd></div>
+          <div><dt>状態</dt><dd><span class="artifact-status is-${escapeHtml(artifact.status)}">${escapeHtml(statusLabel(artifact.status))}</span></dd></div>
+          <div><dt>工程</dt><dd>${escapeHtml(stageLabel(artifact.stage))}</dd></div>
+        </dl>
+        <p class="status-guidance">${escapeHtml(artifact.statusMessage || defaultStatusMessage(artifact))}</p>
+        ${technicalMarkup}
+      </div>
+      <footer class="operation-panel-footer status-detail-actions">
+        <button class="operation-button is-secondary status-close-button" type="button">閉じる</button>
+        ${state.isEditor ? `<button class="operation-button is-secondary manual-url-button" type="button">URLを手動登録</button>` : ""}
+        ${showNotebookAction ? `<a class="operation-button is-primary" href="${escapeHtml(notebookUrl)}" target="_blank" rel="noopener noreferrer">NotebookLMを開く</a>` : ""}
+      </footer>
+    </div>`;
+  els.detailOperationPanel.querySelector(".operation-close-button").addEventListener("click", () => closeOperationPanel());
+  els.detailOperationPanel.querySelector(".status-close-button").addEventListener("click", () => closeOperationPanel());
+  els.detailOperationPanel.querySelector(".manual-url-button")?.addEventListener("click", () => {
+    closeOperationPanel({ force: true, render: false });
+    openArtifactUrlPanel(article, artifactType, { allowViewMode: true });
+  });
+}
+
+function getStatusArtifactType() {
+  if (state.operationPanel.type === "slides-status") return "slides";
+  if (state.operationPanel.type === "manga-status") return "manga";
+  return null;
+}
+
+function stageLabel(stage) {
+  const labels = {
+    preparing: "準備中",
+    drive_registration: "1/4 Google Drive登録",
+    source_registration: "2/4 NotebookLMソース登録",
+    deck_generation: "3/4 スライドデック生成",
+    url_retrieval: "4/4 URL取得",
+    slides_generation: "Google Slides生成"
+  };
+  return labels[stage] || "工程情報なし";
+}
+
+function defaultStatusMessage(artifact) {
+  if (artifact.status === "processing") return "自動処理を実行しています";
+  if (artifact.status === "action_required") return "手動での確認が必要です";
+  if (artifact.status === "failed") return "自動処理を継続できませんでした";
+  return "";
+}
+
 function getOperationArtifactType() {
   if (state.operationPanel.type === "slides-url") return "slides";
   if (state.operationPanel.type === "manga-url") return "manga";
@@ -688,12 +871,25 @@ function getOperationArtifactType() {
 function closeOperationPanel(options = {}) {
   if (state.operationPanel.submitting && !options.force) return false;
   if (state.operationPanel.dirty && !options.force && !window.confirm("入力内容を破棄して閉じますか？")) return false;
-  state.operationPanel = { type: null, articleId: null, value: "", submitting: false, dirty: false, error: "" };
+  const returnFocus = state.operationPanel.returnFocus;
+  state.operationPanel = {
+    type: null,
+    articleId: null,
+    value: "",
+    submitting: false,
+    dirty: false,
+    error: "",
+    diagnostic: null,
+    diagnosticLoading: false,
+    returnFocus: null
+  };
   els.detailPanel.classList.remove("has-operation-panel");
   els.detailOperationBackdrop.hidden = true;
   els.detailOperationPanel.hidden = true;
+  els.detailOperationPanel.removeAttribute("role");
+  els.detailOperationPanel.removeAttribute("aria-modal");
   els.detailOperationPanel.innerHTML = "";
-  if (options.render !== false) els.editModeToggle.focus();
+  if (options.render !== false) (returnFocus?.isConnected ? returnFocus : els.editModeToggle).focus();
   return true;
 }
 
@@ -1460,8 +1656,9 @@ function sourceLabel(kind) {
 function statusLabel(status) {
   const labels = {
     completed: "完了",
-    processing: "処理中",
-    pending: "待機中",
+    processing: "生成中",
+    action_required: "要対応",
+    pending: "未着手",
     failed: "失敗"
   };
   return labels[status] || status || "未設定";

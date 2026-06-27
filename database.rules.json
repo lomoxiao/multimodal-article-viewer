@@ -17,6 +17,10 @@
         }
       }
     },
+    "artifactDiagnostics": {
+      ".read": "auth != null && root.child('access/editors').child(auth.uid).val() === true",
+      ".write": false
+    },
     "access": {
       ".read": false,
       ".write": false,
