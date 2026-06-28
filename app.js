@@ -15,6 +15,9 @@ const DESTINATION_ICONS = {
   notebookLm: { src: "assets/brands/notebooklm.png", className: "is-notebooklm" }
 };
 
+const SWIPE_DELETE_WIDTH = 88;
+const SWIPE_OPEN_THRESHOLD = 44;
+
 const state = {
   activeKind: "all",
   query: "",
@@ -37,6 +40,8 @@ const state = {
   isEditor: false,
   detailMode: "view",
   saveStatusTimer: null,
+  openSwipeArticleId: null,
+  pendingDeletedIds: new Set(),
   operationPanel: {
     type: null,
     articleId: null,
@@ -162,8 +167,10 @@ const els = {
 function wireUiEvents() {
   els.searchInput.addEventListener("input", (event) => {
     state.query = event.target.value.trim().toLowerCase();
+    state.openSwipeArticleId = null;
     renderList();
   });
+  els.articleList.addEventListener("scroll", () => closeOpenSwipeRow(), { passive: true });
   els.bottomSearchBar.addEventListener("submit", (event) => event.preventDefault());
   els.searchFab.addEventListener("click", openSearchBar);
   els.searchCloseButton.addEventListener("click", closeSearchBar);
@@ -179,6 +186,7 @@ function wireUiEvents() {
   els.segments.forEach((button) => {
     button.addEventListener("click", () => {
       state.activeKind = button.dataset.kind;
+      state.openSwipeArticleId = null;
       els.segments.forEach((segment) => {
         const active = segment === button;
         segment.classList.toggle("is-active", active);
@@ -293,12 +301,16 @@ function startEditorAccessSubscription(uid) {
   const valueHandler = (snapshot) => {
     state.isEditor = snapshot.val() === true;
     if (!state.isEditor) resetDetailEditing();
+    if (!state.isEditor) state.openSwipeArticleId = null;
+    renderList();
     const article = getSelectedArticle();
     if (article && !els.detailPanel.hidden) renderDetailContent(article);
   };
   const errorHandler = () => {
     state.isEditor = false;
     resetDetailEditing();
+    state.openSwipeArticleId = null;
+    renderList();
     const article = getSelectedArticle();
     if (article && !els.detailPanel.hidden) renderDetailContent(article);
   };
@@ -320,6 +332,7 @@ function applyArticlesSnapshot(value) {
   const scrollTop = els.articleList.scrollTop;
   articles = Object.values(value)
     .map(normalizeArticle)
+    .filter((article) => !article.deletedAt)
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
   if (!articles.some((article) => article.articleId === previousSelectedId)) {
@@ -360,6 +373,7 @@ function normalizeArticle(raw) {
     },
     slides: normalizeArtifact(slides),
     manga: normalizeArtifact(manga),
+    deletedAt: article.deletedAt || "",
     updatedAt: article.updatedAt || article.registeredAt || ""
   };
 }
@@ -386,6 +400,9 @@ function showDataError(error) {
 
 function renderList() {
   const filtered = getFilteredArticles();
+  if (!filtered.some((article) => article.articleId === state.openSwipeArticleId)) {
+    state.openSwipeArticleId = null;
+  }
   els.articleCount.textContent = `${filtered.length}件`;
   els.articleList.innerHTML = "";
   syncChromeState();
@@ -396,10 +413,39 @@ function renderList() {
   }
 
   filtered.forEach((article) => {
+    const shell = document.createElement("div");
+    shell.className = `article-swipe-shell${state.openSwipeArticleId === article.articleId ? " is-open" : ""}`;
+    shell.dataset.articleId = article.articleId;
+
+    let deleteButton = null;
+    if (state.isEditor) {
+      deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "swipe-delete-action";
+      deleteButton.textContent = "削除";
+      deleteButton.setAttribute("aria-label", `${article.title || "記事"}を削除`);
+      deleteButton.addEventListener("focus", () => setSwipeRowOpen(shell, true));
+      deleteButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        deleteArticle(article);
+      });
+    }
+
     const row = document.createElement("button");
     row.type = "button";
     row.className = `article-row${article.articleId === state.selectedId ? " is-selected" : ""}`;
-    row.addEventListener("click", () => selectArticle(article.articleId, { openSheet: true }));
+    row.addEventListener("click", () => {
+      if (row.dataset.suppressClick === "true") {
+        row.dataset.suppressClick = "false";
+        return;
+      }
+      if (state.openSwipeArticleId === article.articleId) {
+        setSwipeRowOpen(shell, false);
+        return;
+      }
+      closeOpenSwipeRow();
+      selectArticle(article.articleId, { openSheet: true });
+    });
     row.innerHTML = `
       <div class="row-main">
         <div class="row-top">
@@ -412,12 +458,16 @@ function renderList() {
       </div>
       <span class="detail-cue">詳細</span>
     `;
-    els.articleList.appendChild(row);
+    shell.appendChild(row);
+    if (deleteButton) shell.appendChild(deleteButton);
+    if (state.isEditor) attachSwipeHandlers(shell, row, article.articleId);
+    els.articleList.appendChild(shell);
   });
 }
 
 function getFilteredArticles() {
   return articles.filter((article) => {
+    if (state.pendingDeletedIds.has(article.articleId)) return false;
     const kindMatches = state.activeKind === "all" || article.source.kind === state.activeKind;
     const haystack = `${article.title} ${article.source.headline}`.toLowerCase();
     return kindMatches && (!state.query || haystack.includes(state.query));
@@ -433,7 +483,145 @@ function selectArticle(articleId, options = {}) {
 }
 
 function getSelectedArticle() {
-  return articles.find((article) => article.articleId === state.selectedId) || articles[0];
+  const activeArticles = articles.filter((article) => !state.pendingDeletedIds.has(article.articleId));
+  return activeArticles.find((article) => article.articleId === state.selectedId) || activeArticles[0];
+}
+
+function attachSwipeHandlers(shell, row, articleId) {
+  let startX = 0;
+  let startY = 0;
+  let currentOffset = 0;
+  let startOffset = 0;
+  let direction = null;
+  let pointerId = null;
+
+  row.addEventListener("pointerdown", (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    pointerId = event.pointerId;
+    startX = event.clientX;
+    startY = event.clientY;
+    startOffset = state.openSwipeArticleId === articleId ? -SWIPE_DELETE_WIDTH : 0;
+    currentOffset = startOffset;
+    direction = null;
+    row.dataset.suppressClick = "false";
+    row.setPointerCapture?.(pointerId);
+  });
+
+  row.addEventListener("pointermove", (event) => {
+    if (pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+    if (!direction && Math.max(Math.abs(deltaX), Math.abs(deltaY)) > 8) {
+      direction = Math.abs(deltaX) > Math.abs(deltaY) ? "horizontal" : "vertical";
+      if (direction === "horizontal") {
+        closeOpenSwipeRow(articleId);
+        shell.classList.add("is-dragging");
+      }
+    }
+    if (direction !== "horizontal") return;
+    event.preventDefault();
+    currentOffset = Math.max(-SWIPE_DELETE_WIDTH, Math.min(0, startOffset + deltaX));
+    row.style.transform = `translateX(${currentOffset}px)`;
+    row.dataset.suppressClick = "true";
+  });
+
+  const finishSwipe = (event) => {
+    if (pointerId !== event.pointerId) return;
+    if (row.hasPointerCapture?.(pointerId)) row.releasePointerCapture(pointerId);
+    pointerId = null;
+    shell.classList.remove("is-dragging");
+    if (direction === "horizontal") {
+      setSwipeRowOpen(shell, currentOffset <= -SWIPE_OPEN_THRESHOLD);
+    } else {
+      row.style.removeProperty("transform");
+    }
+    direction = null;
+  };
+
+  row.addEventListener("pointerup", finishSwipe);
+  row.addEventListener("pointercancel", finishSwipe);
+}
+
+function closeOpenSwipeRow(exceptArticleId = null) {
+  if (!state.openSwipeArticleId || state.openSwipeArticleId === exceptArticleId) return;
+  const openShell = els.articleList.querySelector(".article-swipe-shell.is-open");
+  if (openShell) setSwipeRowOpen(openShell, false);
+  else state.openSwipeArticleId = null;
+}
+
+function setSwipeRowOpen(shell, open) {
+  const articleId = shell.dataset.articleId;
+  if (open) closeOpenSwipeRow(articleId);
+  shell.classList.toggle("is-open", open);
+  shell.querySelector(".article-row")?.style.removeProperty("transform");
+  state.openSwipeArticleId = open ? articleId : null;
+}
+
+async function deleteArticle(article) {
+  const user = firebase.auth().currentUser;
+  if (!state.isEditor || !user || state.pendingDeletedIds.has(article.articleId)) return;
+
+  const visibleBeforeDelete = getFilteredArticles();
+  const deletedIndex = visibleBeforeDelete.findIndex((item) => item.articleId === article.articleId);
+  const previousSelectedId = state.selectedId;
+  state.pendingDeletedIds.add(article.articleId);
+  state.openSwipeArticleId = null;
+
+  if (state.selectedId === article.articleId) {
+    const replacement = visibleBeforeDelete[deletedIndex + 1] || visibleBeforeDelete[deletedIndex - 1] || null;
+    state.selectedId = replacement?.articleId || null;
+    resetDetailEditing();
+  }
+
+  renderList();
+  syncDetailAfterArticleRemoval();
+
+  try {
+    await firebase.database().ref(`articles/${article.articleId}`).update({
+      deletedAt: new Date().toISOString(),
+      deletedBy: user.uid
+    });
+    state.pendingDeletedIds.delete(article.articleId);
+    showSaveStatus(`「${article.title || "記事"}」を削除しました`, {
+      duration: 6000,
+      actionLabel: "元に戻す",
+      action: () => restoreDeletedArticle(article)
+    });
+  } catch (error) {
+    state.pendingDeletedIds.delete(article.articleId);
+    state.selectedId = previousSelectedId;
+    renderList();
+    syncDetailAfterArticleRemoval();
+    showSaveStatus(/permission_denied/i.test(String(error && error.message))
+      ? "削除権限がありません"
+      : "記事を削除できませんでした。もう一度お試しください");
+  }
+}
+
+async function restoreDeletedArticle(article) {
+  if (!state.isEditor) return;
+  try {
+    await firebase.database().ref(`articles/${article.articleId}`).update({
+      deletedAt: null,
+      deletedBy: null
+    });
+    showSaveStatus(`「${article.title || "記事"}」を元に戻しました`);
+  } catch (error) {
+    showSaveStatus(/permission_denied/i.test(String(error && error.message))
+      ? "復元権限がありません"
+      : "記事を元に戻せませんでした。もう一度お試しください");
+  }
+}
+
+function syncDetailAfterArticleRemoval() {
+  const selected = getSelectedArticle();
+  if (!selected) {
+    els.detailPanel.hidden = true;
+    els.emptyWorkspace.hidden = false;
+    closeMobileWorkspace();
+    return;
+  }
+  if (!els.detailPanel.hidden) renderDetailContent(selected);
 }
 
 function showDetail(article, options = {}) {
@@ -954,14 +1142,28 @@ async function submitArtifactUrl(article, artifactType, value) {
   }
 }
 
-function showSaveStatus(message) {
+function showSaveStatus(message, options = {}) {
   if (!els.saveStatus) return;
   window.clearTimeout(state.saveStatusTimer);
-  els.saveStatus.textContent = message;
+  els.saveStatus.replaceChildren();
+  const messageNode = document.createElement("span");
+  messageNode.textContent = message;
+  els.saveStatus.appendChild(messageNode);
+  if (options.actionLabel && typeof options.action === "function") {
+    const actionButton = document.createElement("button");
+    actionButton.type = "button";
+    actionButton.className = "save-status-action";
+    actionButton.textContent = options.actionLabel;
+    actionButton.addEventListener("click", () => {
+      actionButton.disabled = true;
+      options.action();
+    }, { once: true });
+    els.saveStatus.appendChild(actionButton);
+  }
   els.saveStatus.hidden = false;
   state.saveStatusTimer = window.setTimeout(() => {
     els.saveStatus.hidden = true;
-  }, 3000);
+  }, options.duration || 3000);
 }
 
 function openSearchBar() {
