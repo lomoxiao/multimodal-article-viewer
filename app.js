@@ -170,7 +170,7 @@ function wireUiEvents() {
     state.openSwipeArticleId = null;
     renderList();
   });
-  els.articleList.addEventListener("scroll", () => closeOpenSwipeRow(), { passive: true });
+  window.addEventListener("scroll", () => closeOpenSwipeRow(), { passive: true });
   els.bottomSearchBar.addEventListener("submit", (event) => event.preventDefault());
   els.searchFab.addEventListener("click", openSearchBar);
   els.searchCloseButton.addEventListener("click", closeSearchBar);

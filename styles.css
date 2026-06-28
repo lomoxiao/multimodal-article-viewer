@@ -163,10 +163,11 @@ h3 {
 
 .article-swipe-shell {
   position: relative;
+  isolation: isolate;
   min-width: 0;
   overflow: hidden;
   border-radius: 8px;
-  background: var(--bad);
+  background: var(--panel);
 }
 
 .swipe-delete-action {
@@ -206,15 +207,16 @@ h3 {
   cursor: pointer;
   touch-action: pan-y;
   transition: transform 180ms ease;
-  will-change: transform;
 }
 
 .article-swipe-shell.is-open .article-row {
   transform: translateX(-88px);
+  will-change: transform;
 }
 
 .article-swipe-shell.is-dragging .article-row {
   transition: none;
+  will-change: transform;
 }
 
 .article-row.is-selected {
