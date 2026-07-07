@@ -119,6 +119,7 @@ h3 {
 
 .toolbar {
   display: grid;
+  gap: 6px;
   position: sticky;
   top: 0;
   z-index: 4;
@@ -281,6 +282,50 @@ h3 {
 .chip.is-youtube {
   border-color: rgba(220, 38, 38, 0.24);
   color: var(--youtube);
+}
+
+.chip.is-later {
+  border-color: rgba(161, 92, 0, 0.24);
+  color: var(--warn);
+}
+
+.article-row.is-unread .row-title::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--web);
+  vertical-align: 2px;
+}
+
+.detail-triage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.detail-triage:empty {
+  display: none;
+}
+
+.triage-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.triage-button.is-active {
+  border-color: #95aa98;
+  background: #e9eee7;
 }
 
 .status-chip.is-completed {

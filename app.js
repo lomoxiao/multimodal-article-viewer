@@ -38,6 +38,10 @@ const state = {
   editorAccessRef: null,
   editorAccessHandler: null,
   isEditor: false,
+  readFilter: "all",
+  readState: {},
+  readStateRef: null,
+  readStateHandler: null,
   detailMode: "view",
   saveStatusTimer: null,
   openSwipeArticleId: null,
@@ -108,7 +112,9 @@ const els = {
   articleCount: document.getElementById("articleCount"),
   articleList: document.getElementById("articleList"),
   searchInput: document.getElementById("searchInput"),
-  segments: Array.from(document.querySelectorAll(".segment")),
+  segments: Array.from(document.querySelectorAll(".segment[data-kind]")),
+  readSegments: Array.from(document.querySelectorAll(".segment[data-read-filter]")),
+  detailTriage: document.getElementById("detailTriage"),
   workspacePane: document.getElementById("workspacePane"),
   emptyWorkspace: document.getElementById("emptyWorkspace"),
   detailPanel: document.getElementById("detailPanel"),
@@ -188,6 +194,19 @@ function wireUiEvents() {
       state.activeKind = button.dataset.kind;
       state.openSwipeArticleId = null;
       els.segments.forEach((segment) => {
+        const active = segment === button;
+        segment.classList.toggle("is-active", active);
+        segment.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      renderList();
+    });
+  });
+
+  els.readSegments.forEach((button) => {
+    button.addEventListener("click", () => {
+      state.readFilter = button.dataset.readFilter;
+      state.openSwipeArticleId = null;
+      els.readSegments.forEach((segment) => {
         const active = segment === button;
         segment.classList.toggle("is-active", active);
         segment.setAttribute("aria-selected", active ? "true" : "false");
@@ -327,6 +346,46 @@ function stopEditorAccessSubscription() {
   state.editorAccessHandler = null;
 }
 
+function startReadStateSubscription(uid) {
+  stopReadStateSubscription();
+  const ref = firebase.database().ref(`/readState/${uid}`);
+  const valueHandler = (snapshot) => {
+    state.readState = snapshot.val() || {};
+    renderList();
+    const article = getSelectedArticle();
+    if (article && !els.detailPanel.hidden) renderTriageBar(article);
+  };
+  const errorHandler = () => {
+    state.readState = {};
+  };
+  state.readStateRef = ref;
+  state.readStateHandler = valueHandler;
+  ref.on("value", valueHandler, errorHandler);
+}
+
+function stopReadStateSubscription() {
+  if (state.readStateRef && state.readStateHandler) {
+    state.readStateRef.off("value", state.readStateHandler);
+  }
+  state.readStateRef = null;
+  state.readStateHandler = null;
+}
+
+function readStateOf(articleId) {
+  const entry = state.readState[articleId];
+  return entry && (entry.state === "read" || entry.state === "later") ? entry.state : "unread";
+}
+
+function markReadState(articleId, value) {
+  const user = firebase.auth().currentUser;
+  if (!user || !articleId) return;
+  const ref = firebase.database().ref(`/readState/${user.uid}/${articleId}`);
+  const operation = value
+    ? ref.set({ state: value, updatedAt: new Date().toISOString() })
+    : ref.remove();
+  operation.catch(() => showSaveStatus("既読状態の保存に失敗しました"));
+}
+
 function applyArticlesSnapshot(value) {
   const previousSelectedId = state.selectedId;
   const scrollTop = els.articleList.scrollTop;
@@ -431,9 +490,10 @@ function renderList() {
       });
     }
 
+    const readState = readStateOf(article.articleId);
     const row = document.createElement("button");
     row.type = "button";
-    row.className = `article-row${article.articleId === state.selectedId ? " is-selected" : ""}`;
+    row.className = `article-row${article.articleId === state.selectedId ? " is-selected" : ""}${readState === "unread" ? " is-unread" : ""}`;
     row.addEventListener("click", () => {
       if (row.dataset.suppressClick === "true") {
         row.dataset.suppressClick = "false";
@@ -452,6 +512,7 @@ function renderList() {
           ${sourceChip(article.source.kind)}
           ${statusChip("Slides", article.slides.status)}
           ${statusChip("Manga", article.manga.status)}
+          ${readState === "later" ? '<span class="chip is-later">あとで</span>' : ""}
         </div>
         <p class="row-title">${escapeHtml(article.title)}</p>
         <p class="row-headline">${escapeHtml(article.source.headline)}</p>
@@ -469,8 +530,10 @@ function getFilteredArticles() {
   return articles.filter((article) => {
     if (state.pendingDeletedIds.has(article.articleId)) return false;
     const kindMatches = state.activeKind === "all" || article.source.kind === state.activeKind;
+    const readMatches =
+      state.readFilter === "all" || readStateOf(article.articleId) === state.readFilter;
     const haystack = `${article.title} ${article.source.headline}`.toLowerCase();
-    return kindMatches && (!state.query || haystack.includes(state.query));
+    return kindMatches && readMatches && (!state.query || haystack.includes(state.query));
   });
 }
 
@@ -478,6 +541,8 @@ function selectArticle(articleId, options = {}) {
   resetDetailEditing();
   closeSearchBar({ keepQuery: true });
   state.selectedId = articleId;
+  // 開いたら既読。「あとで」は明示操作のみで解除する
+  if (readStateOf(articleId) === "unread") markReadState(articleId, "read");
   renderList();
   showDetail(getSelectedArticle(), { keepSheet: options.openSheet });
 }
@@ -644,6 +709,7 @@ function renderDetailContent(article) {
   els.detailMeta.textContent = `${sourceLabel(article.source.kind)} · ${formatDate(article.updatedAt)} · ${article.articleId}`;
   els.detailTitle.textContent = article.title;
   els.detailHeadline.textContent = article.source.headline;
+  renderTriageBar(article);
   els.editModeControl.hidden = !state.isEditor;
   els.editModeToggle.checked = state.isEditor && state.detailMode === "edit";
   els.detailActions.innerHTML = "";
@@ -665,6 +731,30 @@ function renderDetailContent(article) {
     els.detailActions.appendChild(renderViewArtifactDestination(article, "slides"));
     els.detailActions.appendChild(renderViewArtifactDestination(article, "manga"));
   }
+}
+
+function renderTriageBar(article) {
+  els.detailTriage.innerHTML = "";
+  const current = readStateOf(article.articleId);
+  [
+    {
+      label: current === "read" ? "未読に戻す" : "既読にする",
+      active: current === "read",
+      next: current === "read" ? null : "read"
+    },
+    {
+      label: current === "later" ? "「あとで」を解除" : "あとで読む",
+      active: current === "later",
+      next: current === "later" ? null : "later"
+    }
+  ].forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `triage-button${item.active ? " is-active" : ""}`;
+    button.textContent = item.label;
+    button.addEventListener("click", () => markReadState(article.articleId, item.next));
+    els.detailTriage.appendChild(button);
+  });
 }
 
 function createDestinationButton(item) {
@@ -1997,14 +2087,17 @@ function setupAuth() {
       hideAuthGate();
       els.loginPassword.value = "";
       startEditorAccessSubscription(user.uid);
+      startReadStateSubscription(user.uid);
       startArticlesSubscription();
       applySharedUrlIfNeeded();
     } else {
       stopArticlesSubscription();
       stopEditorAccessSubscription();
+      stopReadStateSubscription();
       articles = [];
       state.selectedId = null;
       state.isEditor = false;
+      state.readState = {};
       resetDetailEditing();
       renderList();
       showAuthGate();

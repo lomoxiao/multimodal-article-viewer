@@ -48,6 +48,15 @@
         }
       }
     },
+    "readState": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && root.child('access/viewers').child(auth.uid).val() === true",
+        "$articleId": {
+          ".validate": "newData.hasChildren(['state', 'updatedAt']) && (newData.child('state').val() === 'read' || newData.child('state').val() === 'later') && newData.child('updatedAt').isString() && newData.child('updatedAt').val().length > 0 && newData.child('updatedAt').val().length <= 64"
+        }
+      }
+    },
     "artifactDiagnostics": {
       ".read": "auth != null && root.child('access/editors').child(auth.uid).val() === true",
       ".write": false
