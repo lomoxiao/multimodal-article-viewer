@@ -18,6 +18,12 @@ const DESTINATION_ICONS = {
 const SWIPE_DELETE_WIDTH = 88;
 const SWIPE_OPEN_THRESHOLD = 44;
 
+const AUTH_WATCHDOG_TIMEOUT_MS = 8000;
+const AUTH_RECOVERY_FLAG_KEY = "mmvAuthRecoveryRequested";
+// Firebase SDKが作るIndexedDB。firebaseLocalStorageDbの破損でauth初期化が
+// 完了しなくなる事象があるため、復旧時はこれらを削除する。
+const FIREBASE_INDEXED_DB_NAMES = ["firebaseLocalStorageDb", "firebase-heartbeat-database"];
+
 const state = {
   activeKind: "all",
   query: "",
@@ -44,6 +50,8 @@ const state = {
   readStateHandler: null,
   detailMode: "view",
   saveStatusTimer: null,
+  authWatchdogTimer: null,
+  authSettled: false,
   openSwipeArticleId: null,
   pendingDeletedIds: new Set(),
   operationPanel: {
@@ -146,6 +154,9 @@ const els = {
   loginButton: document.getElementById("loginButton"),
   authError: document.getElementById("authError"),
   signOutButton: document.getElementById("signOutButton"),
+  authWatchdogPanel: document.getElementById("authWatchdogPanel"),
+  watchdogReloadButton: document.getElementById("watchdogReloadButton"),
+  watchdogResetButton: document.getElementById("watchdogResetButton"),
   saveStatus: document.getElementById("saveStatus"),
   floatingActions: document.getElementById("floatingActions"),
   generationFab: document.getElementById("generationFab"),
@@ -188,6 +199,8 @@ function wireUiEvents() {
     syncGenerationTargetFields();
   });
   els.generationForm.addEventListener("submit", submitGenerationRequest);
+  els.watchdogReloadButton.addEventListener("click", () => window.location.reload());
+  els.watchdogResetButton.addEventListener("click", requestAuthRecovery);
 
   els.segments.forEach((button) => {
     button.addEventListener("click", () => {
@@ -2023,6 +2036,7 @@ function escapeHtml(value) {
 }
 
 function showAuthGate(message) {
+  settleAuthWatchdog();
   els.authGate.hidden = false;
   els.signOutButton.hidden = true;
   if (message) {
@@ -2032,9 +2046,61 @@ function showAuthGate(message) {
 }
 
 function hideAuthGate() {
+  settleAuthWatchdog();
   els.authGate.hidden = true;
   els.authError.hidden = true;
   els.signOutButton.hidden = false;
+}
+
+function startAuthWatchdog() {
+  state.authWatchdogTimer = window.setTimeout(() => {
+    if (!state.authSettled) els.authWatchdogPanel.hidden = false;
+  }, AUTH_WATCHDOG_TIMEOUT_MS);
+}
+
+function settleAuthWatchdog() {
+  state.authSettled = true;
+  if (state.authWatchdogTimer) {
+    window.clearTimeout(state.authWatchdogTimer);
+    state.authWatchdogTimer = null;
+  }
+  els.authWatchdogPanel.hidden = true;
+}
+
+function requestAuthRecovery() {
+  try {
+    window.sessionStorage.setItem(AUTH_RECOVERY_FLAG_KEY, "1");
+  } catch {
+    // sessionStorage不可時はフラグなし再読み込みにフォールバック
+  }
+  window.location.reload();
+}
+
+function consumeAuthRecoveryFlag() {
+  try {
+    if (window.sessionStorage.getItem(AUTH_RECOVERY_FLAG_KEY) !== "1") return false;
+    window.sessionStorage.removeItem(AUTH_RECOVERY_FLAG_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function deleteFirebaseIndexedDbs() {
+  if (!window.indexedDB) return Promise.resolve();
+  const deletions = FIREBASE_INDEXED_DB_NAMES.map((name) => new Promise((resolve) => {
+    let request;
+    try {
+      request = window.indexedDB.deleteDatabase(name);
+    } catch {
+      resolve();
+      return;
+    }
+    request.onsuccess = request.onerror = request.onblocked = () => resolve();
+  }));
+  // 破損したIndexedDBでは削除要求も返らないことがあるため待ち時間に上限を設ける
+  const timeLimit = new Promise((resolve) => window.setTimeout(resolve, 3000));
+  return Promise.race([Promise.all(deletions), timeLimit]);
 }
 
 function authErrorMessage(error) {
@@ -2107,4 +2173,10 @@ function setupAuth() {
 
 state.sharedUrl.value = readSharedUrlFromQuery();
 wireUiEvents();
-setupAuth();
+startAuthWatchdog();
+if (consumeAuthRecoveryFlag()) {
+  // firebase初期化前に削除することで、自ページの接続がブロック要因になるのを避ける
+  deleteFirebaseIndexedDbs().then(setupAuth);
+} else {
+  setupAuth();
+}

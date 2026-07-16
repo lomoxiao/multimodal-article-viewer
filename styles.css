@@ -1970,6 +1970,13 @@ body.viewer-controls-idle.viewer-immersive .nav-next {
   cursor: progress;
 }
 
+.auth-submit.is-secondary {
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font-weight: 500;
+}
+
 .auth-error {
   margin: 0;
   color: var(--bad);

@@ -206,6 +206,17 @@
     </form>
   </div>
 
+  <div id="authWatchdogPanel" class="auth-gate" hidden>
+    <div class="auth-card">
+      <p class="eyebrow">Multimodal Article Viewer</p>
+      <h2>接続に時間がかかっています</h2>
+      <p class="auth-sub">サインイン処理が完了しません。通信状況に問題がなければ、ブラウザに保存されたセッション記録が壊れている可能性があります。</p>
+      <button id="watchdogReloadButton" class="auth-submit" type="button">再読み込み</button>
+      <button id="watchdogResetButton" class="auth-submit is-secondary" type="button">セッション記録を初期化して再読み込み</button>
+      <p class="auth-sub">初期化するとこのサイトのセッション記録だけが削除され、再ログインが必要になります。他サイトのデータには影響しません。</p>
+    </div>
+  </div>
+
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
