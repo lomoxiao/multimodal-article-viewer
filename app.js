@@ -15,7 +15,7 @@ const DESTINATION_ICONS = {
   notebookLm: { src: "assets/brands/notebooklm.png", className: "is-notebooklm" }
 };
 
-const SWIPE_DELETE_WIDTH = 88;
+const SWIPE_ACTION_WIDTH = 88;
 const SWIPE_OPEN_THRESHOLD = 44;
 
 const AUTH_WATCHDOG_TIMEOUT_MS = 8000;
@@ -53,6 +53,8 @@ const state = {
   authWatchdogTimer: null,
   authSettled: false,
   openSwipeArticleId: null,
+  openSwipeSide: null,
+  isFilterPanelOpen: false,
   pendingDeletedIds: new Set(),
   operationPanel: {
     type: null,
@@ -87,32 +89,39 @@ const apiClient = {
     return Boolean(this.getConfig().GAS_API_URL);
   },
 
-  get(action, params = {}) {
-    const config = this.getConfig();
-    const url = new URL(config.GAS_API_URL);
-    url.searchParams.set("action", action);
-    if (config.CLIENT_KEY) {
-      url.searchParams.set("clientKey", config.CLIENT_KEY);
+  async post(action, payload = {}) {
+    try {
+      return await this.postOnce(action, payload, false);
+    } catch (error) {
+      if (!error || error.code !== "unauthorized") throw error;
     }
-    Object.keys(params).forEach((key) => {
-      if (params[key] !== undefined && params[key] !== null) {
-        url.searchParams.set(key, String(params[key]));
+    // トークン失効の可能性があるため、強制リフレッシュで1回だけ再試行する
+    try {
+      return await this.postOnce(action, payload, true);
+    } catch (retryError) {
+      if (retryError && retryError.code === "unauthorized") {
+        throw new Error("認可に失敗しました。再ログインしてください");
       }
-    });
-    return fetch(url.toString(), { method: "GET" }).then(parseApiResponse);
+      throw retryError;
+    }
   },
 
-  post(action, payload = {}) {
+  async postOnce(action, payload, forceTokenRefresh) {
     const config = this.getConfig();
-    return fetch(config.GAS_API_URL, {
+    const user = window.firebase ? firebase.auth().currentUser : null;
+    // トークンはURLに載せずPOSTボディでのみ送る
+    const idToken = user ? await user.getIdToken(forceTokenRefresh) : "";
+    const response = await fetch(config.GAS_API_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({
         ...payload,
         action,
-        clientKey: config.CLIENT_KEY || ""
+        clientKey: config.CLIENT_KEY || "",
+        idToken
       })
-    }).then(parseApiResponse);
+    });
+    return parseApiResponse(response);
   }
 };
 
@@ -122,6 +131,10 @@ const els = {
   searchInput: document.getElementById("searchInput"),
   segments: Array.from(document.querySelectorAll(".segment[data-kind]")),
   readSegments: Array.from(document.querySelectorAll(".segment[data-read-filter]")),
+  filterToggleButton: document.getElementById("filterToggleButton"),
+  filterCountBadge: document.getElementById("filterCountBadge"),
+  filterChips: document.getElementById("filterChips"),
+  filterPanel: document.getElementById("filterPanel"),
   detailTriage: document.getElementById("detailTriage"),
   workspacePane: document.getElementById("workspacePane"),
   emptyWorkspace: document.getElementById("emptyWorkspace"),
@@ -202,30 +215,12 @@ function wireUiEvents() {
   els.watchdogReloadButton.addEventListener("click", () => window.location.reload());
   els.watchdogResetButton.addEventListener("click", requestAuthRecovery);
 
+  els.filterToggleButton.addEventListener("click", () => toggleFilterPanel());
   els.segments.forEach((button) => {
-    button.addEventListener("click", () => {
-      state.activeKind = button.dataset.kind;
-      state.openSwipeArticleId = null;
-      els.segments.forEach((segment) => {
-        const active = segment === button;
-        segment.classList.toggle("is-active", active);
-        segment.setAttribute("aria-selected", active ? "true" : "false");
-      });
-      renderList();
-    });
+    button.addEventListener("click", () => setKindFilter(button.dataset.kind));
   });
-
   els.readSegments.forEach((button) => {
-    button.addEventListener("click", () => {
-      state.readFilter = button.dataset.readFilter;
-      state.openSwipeArticleId = null;
-      els.readSegments.forEach((segment) => {
-        const active = segment === button;
-        segment.classList.toggle("is-active", active);
-        segment.setAttribute("aria-selected", active ? "true" : "false");
-      });
-      renderList();
-    });
+    button.addEventListener("click", () => setReadFilter(button.dataset.readFilter));
   });
 
   els.closeDetailButton.addEventListener("click", closeMobileWorkspace);
@@ -274,6 +269,10 @@ function wireUiEvents() {
     }
     if (event.key === "Escape" && state.isSearchOpen) {
       closeSearchBar();
+      return;
+    }
+    if (event.key === "Escape" && state.isFilterPanelOpen) {
+      toggleFilterPanel(false);
       return;
     }
     if (els.slidesViewer.hidden) return;
@@ -474,6 +473,7 @@ function renderList() {
   const filtered = getFilteredArticles();
   if (!filtered.some((article) => article.articleId === state.openSwipeArticleId)) {
     state.openSwipeArticleId = null;
+    state.openSwipeSide = null;
   }
   els.articleCount.textContent = `${filtered.length}件`;
   els.articleList.innerHTML = "";
@@ -485,25 +485,56 @@ function renderList() {
   }
 
   filtered.forEach((article) => {
+    const readState = readStateOf(article.articleId);
+    const openSide = state.openSwipeArticleId === article.articleId ? state.openSwipeSide : null;
     const shell = document.createElement("div");
-    shell.className = `article-swipe-shell${state.openSwipeArticleId === article.articleId ? " is-open" : ""}`;
+    shell.className = "article-swipe-shell";
+    if (state.isEditor) shell.classList.add("has-delete");
+    if (openSide === "left") shell.classList.add("is-open-left");
+    if (openSide === "right") shell.classList.add("is-open-right");
     shell.dataset.articleId = article.articleId;
 
-    let deleteButton = null;
+    // 右スワイプで露出する左側アクション: あとでトグル
+    const laterButton = document.createElement("button");
+    laterButton.type = "button";
+    laterButton.className = "swipe-action swipe-action--later";
+    laterButton.textContent = readState === "later" ? "解除" : "あとで";
+    laterButton.setAttribute("aria-label", `${article.title || "記事"}を${readState === "later" ? "「あとで」から解除" : "あとで読む"}`);
+    laterButton.addEventListener("focus", () => setSwipeRowOpen(shell, "left"));
+    laterButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      markReadState(article.articleId, readState === "later" ? null : "later");
+      closeOpenSwipeRow();
+    });
+
+    // 左スワイプで露出する右側アクション: 既読トグル + (editor)削除
+    const rightActions = document.createElement("div");
+    rightActions.className = "swipe-actions-right";
+    const readButton = document.createElement("button");
+    readButton.type = "button";
+    readButton.className = "swipe-action swipe-action--read";
+    readButton.textContent = readState === "read" ? "未読へ" : "既読";
+    readButton.setAttribute("aria-label", `${article.title || "記事"}を${readState === "read" ? "未読に戻す" : "既読にする"}`);
+    readButton.addEventListener("focus", () => setSwipeRowOpen(shell, "right"));
+    readButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      markReadState(article.articleId, readState === "read" ? null : "read");
+      closeOpenSwipeRow();
+    });
+    rightActions.appendChild(readButton);
     if (state.isEditor) {
-      deleteButton = document.createElement("button");
+      const deleteButton = document.createElement("button");
       deleteButton.type = "button";
-      deleteButton.className = "swipe-delete-action";
+      deleteButton.className = "swipe-action swipe-action--delete";
       deleteButton.textContent = "削除";
       deleteButton.setAttribute("aria-label", `${article.title || "記事"}を削除`);
-      deleteButton.addEventListener("focus", () => setSwipeRowOpen(shell, true));
+      deleteButton.addEventListener("focus", () => setSwipeRowOpen(shell, "right"));
       deleteButton.addEventListener("click", (event) => {
         event.stopPropagation();
         deleteArticle(article);
       });
+      rightActions.appendChild(deleteButton);
     }
-
-    const readState = readStateOf(article.articleId);
     const row = document.createElement("button");
     row.type = "button";
     row.className = `article-row${article.articleId === state.selectedId ? " is-selected" : ""}${readState === "unread" ? " is-unread" : ""}`;
@@ -513,7 +544,7 @@ function renderList() {
         return;
       }
       if (state.openSwipeArticleId === article.articleId) {
-        setSwipeRowOpen(shell, false);
+        setSwipeRowOpen(shell, null);
         return;
       }
       closeOpenSwipeRow();
@@ -533,8 +564,9 @@ function renderList() {
       <span class="detail-cue">詳細</span>
     `;
     shell.appendChild(row);
-    if (deleteButton) shell.appendChild(deleteButton);
-    if (state.isEditor) attachSwipeHandlers(shell, row, article.articleId);
+    shell.appendChild(laterButton);
+    shell.appendChild(rightActions);
+    attachSwipeHandlers(shell, row, article.articleId);
     els.articleList.appendChild(shell);
   });
 }
@@ -548,6 +580,63 @@ function getFilteredArticles() {
     const haystack = `${article.title} ${article.source.headline}`.toLowerCase();
     return kindMatches && readMatches && (!state.query || haystack.includes(state.query));
   });
+}
+
+function setKindFilter(kind) {
+  state.activeKind = kind;
+  state.openSwipeArticleId = null;
+  syncFilterControls();
+  renderList();
+}
+
+function setReadFilter(value) {
+  state.readFilter = value;
+  state.openSwipeArticleId = null;
+  syncFilterControls();
+  renderList();
+}
+
+function syncFilterControls() {
+  els.segments.forEach((segment) => {
+    const active = segment.dataset.kind === state.activeKind;
+    segment.classList.toggle("is-active", active);
+    segment.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  els.readSegments.forEach((segment) => {
+    const active = segment.dataset.readFilter === state.readFilter;
+    segment.classList.toggle("is-active", active);
+    segment.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  renderFilterChips();
+}
+
+function renderFilterChips() {
+  const chips = [];
+  if (state.activeKind !== "all") {
+    chips.push({ label: sourceLabel(state.activeKind), clear: () => setKindFilter("all") });
+  }
+  if (state.readFilter !== "all") {
+    chips.push({ label: state.readFilter === "unread" ? "未読" : "あとで", clear: () => setReadFilter("all") });
+  }
+  els.filterChips.replaceChildren();
+  chips.forEach((chip) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "filter-chip";
+    button.innerHTML = `${escapeHtml(chip.label)}<span aria-hidden="true">×</span>`;
+    button.setAttribute("aria-label", `絞り込み「${chip.label}」を解除`);
+    button.addEventListener("click", chip.clear);
+    els.filterChips.appendChild(button);
+  });
+  els.filterCountBadge.hidden = chips.length === 0;
+  els.filterCountBadge.textContent = chips.length ? String(chips.length) : "";
+}
+
+function toggleFilterPanel(force) {
+  state.isFilterPanelOpen = typeof force === "boolean" ? force : !state.isFilterPanelOpen;
+  els.filterPanel.hidden = !state.isFilterPanelOpen;
+  els.filterToggleButton.setAttribute("aria-expanded", state.isFilterPanelOpen ? "true" : "false");
+  els.filterToggleButton.classList.toggle("is-active", state.isFilterPanelOpen);
 }
 
 function selectArticle(articleId, options = {}) {
@@ -573,12 +662,20 @@ function attachSwipeHandlers(shell, row, articleId) {
   let direction = null;
   let pointerId = null;
 
+  const rightWidth = () => (state.isEditor ? SWIPE_ACTION_WIDTH * 2 : SWIPE_ACTION_WIDTH);
+
   row.addEventListener("pointerdown", (event) => {
     if (event.button !== undefined && event.button !== 0) return;
     pointerId = event.pointerId;
     startX = event.clientX;
     startY = event.clientY;
-    startOffset = state.openSwipeArticleId === articleId ? -SWIPE_DELETE_WIDTH : 0;
+    if (state.openSwipeArticleId === articleId && state.openSwipeSide === "left") {
+      startOffset = SWIPE_ACTION_WIDTH;
+    } else if (state.openSwipeArticleId === articleId && state.openSwipeSide === "right") {
+      startOffset = -rightWidth();
+    } else {
+      startOffset = 0;
+    }
     currentOffset = startOffset;
     direction = null;
     row.dataset.suppressClick = "false";
@@ -598,7 +695,7 @@ function attachSwipeHandlers(shell, row, articleId) {
     }
     if (direction !== "horizontal") return;
     event.preventDefault();
-    currentOffset = Math.max(-SWIPE_DELETE_WIDTH, Math.min(0, startOffset + deltaX));
+    currentOffset = Math.max(-rightWidth(), Math.min(SWIPE_ACTION_WIDTH, startOffset + deltaX));
     row.style.transform = `translateX(${currentOffset}px)`;
     row.dataset.suppressClick = "true";
   });
@@ -609,7 +706,10 @@ function attachSwipeHandlers(shell, row, articleId) {
     pointerId = null;
     shell.classList.remove("is-dragging");
     if (direction === "horizontal") {
-      setSwipeRowOpen(shell, currentOffset <= -SWIPE_OPEN_THRESHOLD);
+      let side = null;
+      if (currentOffset >= SWIPE_OPEN_THRESHOLD) side = "left";
+      else if (currentOffset <= -SWIPE_OPEN_THRESHOLD) side = "right";
+      setSwipeRowOpen(shell, side);
     } else {
       row.style.removeProperty("transform");
     }
@@ -622,17 +722,23 @@ function attachSwipeHandlers(shell, row, articleId) {
 
 function closeOpenSwipeRow(exceptArticleId = null) {
   if (!state.openSwipeArticleId || state.openSwipeArticleId === exceptArticleId) return;
-  const openShell = els.articleList.querySelector(".article-swipe-shell.is-open");
-  if (openShell) setSwipeRowOpen(openShell, false);
-  else state.openSwipeArticleId = null;
+  const openShell = els.articleList.querySelector(".article-swipe-shell.is-open-left, .article-swipe-shell.is-open-right");
+  if (openShell) {
+    setSwipeRowOpen(openShell, null);
+  } else {
+    state.openSwipeArticleId = null;
+    state.openSwipeSide = null;
+  }
 }
 
-function setSwipeRowOpen(shell, open) {
+function setSwipeRowOpen(shell, side) {
   const articleId = shell.dataset.articleId;
-  if (open) closeOpenSwipeRow(articleId);
-  shell.classList.toggle("is-open", open);
+  if (side) closeOpenSwipeRow(articleId);
+  shell.classList.toggle("is-open-left", side === "left");
+  shell.classList.toggle("is-open-right", side === "right");
   shell.querySelector(".article-row")?.style.removeProperty("transform");
-  state.openSwipeArticleId = open ? articleId : null;
+  state.openSwipeArticleId = side ? articleId : null;
+  state.openSwipeSide = side || null;
 }
 
 async function deleteArticle(article) {
@@ -1570,7 +1676,7 @@ function loadSlidePageWindow(startIndex, count) {
 
   markPagesLoading(safeStart, count);
   state.pageWindowRequests[requestKey] = true;
-  apiClient.get("getPageWindow", {
+  apiClient.post("getPageWindow", {
     presentationId: state.currentPresentationId,
     startIndex: safeStart,
     count
@@ -1662,7 +1768,11 @@ function parseApiResponse(response) {
       const message = result && result.error && result.error.message
         ? result.error.message
         : "API request failed.";
-      throw new Error(message);
+      const error = new Error(message);
+      if (result && result.error && result.error.code) {
+        error.code = result.error.code;
+      }
+      throw error;
     }
     return result.data;
   });
@@ -2173,6 +2283,7 @@ function setupAuth() {
 
 state.sharedUrl.value = readSharedUrlFromQuery();
 wireUiEvents();
+syncFilterControls();
 startAuthWatchdog();
 if (consumeAuthRecoveryFlag()) {
   // firebase初期化前に削除することで、自ページの接続がブロック要因になるのを避ける

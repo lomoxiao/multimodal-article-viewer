@@ -128,6 +128,77 @@ h3 {
   backdrop-filter: blur(12px);
 }
 
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.filter-toggle.is-active {
+  border-color: #95aa98;
+  background: #e9eee7;
+}
+
+.filter-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--primary-action);
+  color: #fff;
+  font-size: 11px;
+}
+
+.filter-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(161, 92, 0, 0.24);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.filter-panel {
+  display: grid;
+  gap: 6px;
+}
+
+.filter-panel[hidden] {
+  display: none;
+}
+
 .segmented-control {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -171,16 +242,12 @@ h3 {
   background: var(--panel);
 }
 
-.swipe-delete-action {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
+.swipe-action {
   z-index: 0;
   width: 88px;
   border: 0;
   border-radius: 0;
-  background: var(--bad);
+  background: var(--muted);
   color: #fff;
   font: inherit;
   font-size: 14px;
@@ -188,9 +255,34 @@ h3 {
   cursor: pointer;
 }
 
-.swipe-delete-action:focus-visible {
+.swipe-action:focus-visible {
   outline: 3px solid #fff;
   outline-offset: -5px;
+}
+
+.swipe-action--later {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: var(--warn);
+}
+
+.swipe-actions-right {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  display: flex;
+}
+
+.swipe-action--read {
+  background: var(--slides);
+}
+
+.swipe-action--delete {
+  background: var(--bad);
 }
 
 .article-row {
@@ -210,9 +302,18 @@ h3 {
   transition: transform 180ms ease;
 }
 
-.article-swipe-shell.is-open .article-row {
+.article-swipe-shell.is-open-left .article-row {
+  transform: translateX(88px);
+  will-change: transform;
+}
+
+.article-swipe-shell.is-open-right .article-row {
   transform: translateX(-88px);
   will-change: transform;
+}
+
+.article-swipe-shell.has-delete.is-open-right .article-row {
+  transform: translateX(-176px);
 }
 
 .article-swipe-shell.is-dragging .article-row {
@@ -304,7 +405,9 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 0 0 14px;
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
 
 .detail-triage:empty {
@@ -376,12 +479,18 @@ h3 {
 .detail-panel {
   position: relative;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 14px;
   overflow: hidden;
   padding: 18px;
   border-radius: 8px 8px 0 0;
   background: var(--panel);
+}
+
+.detail-panel > .destination-grid {
+  overflow-y: auto;
+  align-content: start;
+  min-height: 0;
 }
 
 
@@ -1517,6 +1626,12 @@ body.slides-viewer-open {
     height: clamp(520px, 74svh, 720px);
     max-height: calc(100svh - 12px);
     overflow: hidden;
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+  }
+
+  /* 底部トリアージバーとFABの重なり回避。タブレットはシートでないため対象外 */
+  body.detail-context-open .floating-actions {
+    display: none;
   }
 
   .detail-operation-backdrop {

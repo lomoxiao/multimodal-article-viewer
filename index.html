@@ -21,15 +21,23 @@
       </header>
 
       <div class="toolbar" aria-label="記事フィルター">
-        <div class="segmented-control" role="tablist" aria-label="ソース種別">
-          <button class="segment is-active" type="button" data-kind="all" aria-selected="true">すべて</button>
-          <button class="segment" type="button" data-kind="web" aria-selected="false">Web</button>
-          <button class="segment" type="button" data-kind="youtube" aria-selected="false">YouTube</button>
+        <div class="filter-bar">
+          <button id="filterToggleButton" class="filter-toggle" type="button" aria-expanded="false" aria-controls="filterPanel">
+            絞り込み<span id="filterCountBadge" class="filter-count-badge" hidden></span>
+          </button>
+          <div id="filterChips" class="filter-chips" aria-label="適用中の絞り込み"></div>
         </div>
-        <div class="segmented-control" role="tablist" aria-label="既読状態">
-          <button class="segment is-active" type="button" data-read-filter="all" aria-selected="true">すべて</button>
-          <button class="segment" type="button" data-read-filter="unread" aria-selected="false">未読</button>
-          <button class="segment" type="button" data-read-filter="later" aria-selected="false">あとで</button>
+        <div id="filterPanel" class="filter-panel" hidden>
+          <div class="segmented-control" role="tablist" aria-label="ソース種別">
+            <button class="segment is-active" type="button" data-kind="all" aria-selected="true">すべて</button>
+            <button class="segment" type="button" data-kind="web" aria-selected="false">Web</button>
+            <button class="segment" type="button" data-kind="youtube" aria-selected="false">YouTube</button>
+          </div>
+          <div class="segmented-control" role="tablist" aria-label="既読状態">
+            <button class="segment is-active" type="button" data-read-filter="all" aria-selected="true">すべて</button>
+            <button class="segment" type="button" data-read-filter="unread" aria-selected="false">未読</button>
+            <button class="segment" type="button" data-read-filter="later" aria-selected="false">あとで</button>
+          </div>
         </div>
       </div>
 
@@ -61,8 +69,8 @@
           </div>
         </header>
         <p id="detailHeadline" class="detail-headline"></p>
-        <div id="detailTriage" class="detail-triage"></div>
         <div id="detailActions" class="destination-grid"></div>
+        <div id="detailTriage" class="detail-triage"></div>
         <div id="detailOperationBackdrop" class="detail-operation-backdrop" hidden></div>
         <section id="detailOperationPanel" class="detail-operation-panel" aria-label="成果物URLの編集" hidden></section>
       </article>

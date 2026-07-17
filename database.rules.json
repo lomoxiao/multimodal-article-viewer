@@ -68,6 +68,11 @@
         "$uid": {
           ".read": "auth != null && auth.uid === $uid"
         }
+      },
+      "viewers": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid"
+        }
       }
     }
   }
