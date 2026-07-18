@@ -57,6 +57,17 @@
         }
       }
     },
+    "generationRequests": {
+      ".indexOn": "status",
+      "$requestId": {
+        ".read": "auth != null && data.child('ownerUid').val() === auth.uid",
+        ".write": "auth != null && root.child('access/viewers').child(auth.uid).val() === true && !data.exists() && newData.child('ownerUid').val() === auth.uid && newData.child('status').val() === 'queued' && newData.child('trigger/provider').val() === 'web'",
+        "kind": { ".validate": "newData.val() === 'text'" },
+        "text": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100000" },
+        "slides": { ".validate": "newData.val() === true" },
+        "createdAt": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 64" }
+      }
+    },
     "artifactDiagnostics": {
       ".read": "auth != null && root.child('access/editors').child(auth.uid).val() === true",
       ".write": false

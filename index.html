@@ -131,10 +131,25 @@
         <button id="generationCloseButton" class="icon-button" type="button" aria-label="生成依頼を閉じる">×</button>
       </header>
       <div class="generation-body">
-        <label class="generation-field" for="generationUrlInput">
+        <div class="segmented-control generation-mode-control" role="tablist" aria-label="ソースの投入方法">
+          <button class="segment is-active" type="button" data-generation-mode="url" aria-selected="true">URL</button>
+          <button class="segment" type="button" data-generation-mode="text" aria-selected="false">テキスト</button>
+        </div>
+        <label id="generationUrlField" class="generation-field" for="generationUrlInput">
           <span>ソースURL</span>
           <input id="generationUrlInput" type="url" inputmode="url" autocomplete="url" placeholder="https://example.com/article">
         </label>
+        <div id="generationTextFields" class="generation-text-fields" hidden>
+          <label class="generation-field is-wide" for="generationTitleInput">
+            <span>タイトル（任意）</span>
+            <input id="generationTitleInput" type="text" autocomplete="off" placeholder="未入力なら本文の先頭行を使用">
+          </label>
+          <label class="generation-field is-wide" for="generationTextInput">
+            <span>本文テキスト</span>
+            <textarea id="generationTextInput" rows="8" placeholder="ChatGPTの回答や記事本文を貼り付け"></textarea>
+          </label>
+          <p id="generationTextCount" class="generation-text-count" aria-live="polite">0 / 100,000字</p>
+        </div>
         <fieldset class="generation-targets">
           <legend>生成対象</legend>
           <label class="generation-check" for="generationSlidesToggle">

@@ -72,7 +72,8 @@ const state = {
     open: false,
     submitting: false,
     error: "",
-    sourceContext: "list"
+    sourceContext: "list",
+    mode: "url"
   },
   sharedUrl: {
     value: "",
@@ -181,6 +182,12 @@ const els = {
   generationPanel: document.getElementById("generationPanel"),
   generationForm: document.getElementById("generationForm"),
   generationCloseButton: document.getElementById("generationCloseButton"),
+  generationModeSegments: Array.from(document.querySelectorAll(".segment[data-generation-mode]")),
+  generationUrlField: document.getElementById("generationUrlField"),
+  generationTextFields: document.getElementById("generationTextFields"),
+  generationTitleInput: document.getElementById("generationTitleInput"),
+  generationTextInput: document.getElementById("generationTextInput"),
+  generationTextCount: document.getElementById("generationTextCount"),
   generationUrlInput: document.getElementById("generationUrlInput"),
   generationSlidesToggle: document.getElementById("generationSlidesToggle"),
   generationAudienceInput: document.getElementById("generationAudienceInput"),
@@ -211,6 +218,10 @@ function wireUiEvents() {
   els.generationMangaToggle.addEventListener("change", () => {
     syncGenerationTargetFields();
   });
+  els.generationModeSegments.forEach((button) => {
+    button.addEventListener("click", () => setGenerationMode(button.dataset.generationMode));
+  });
+  els.generationTextInput.addEventListener("input", updateGenerationTextCount);
   els.generationForm.addEventListener("submit", submitGenerationRequest);
   els.watchdogReloadButton.addEventListener("click", () => window.location.reload());
   els.watchdogResetButton.addEventListener("click", requestAuthRecovery);
@@ -439,7 +450,7 @@ function normalizeArticle(raw) {
     originalUrl: article.originalUrl || article.canonicalUrl || "",
     title: article.title || "",
     source: {
-      kind: source.kind === "youtube" ? "youtube" : "web",
+      kind: source.kind === "youtube" ? "youtube" : source.kind === "text" ? "text" : "web",
       headline: source.headline || ""
     },
     slides: normalizeArtifact(slides),
@@ -833,13 +844,14 @@ function renderDetailContent(article) {
   els.editModeToggle.checked = state.isEditor && state.detailMode === "edit";
   els.detailActions.innerHTML = "";
 
+  const isTextSource = article.source.kind === "text";
   [
     {
       icon: getSourceDestinationIcon(article),
       title: "元記事",
-      note: getUrlHost(article.canonicalUrl || article.originalUrl),
-      enabled: Boolean(article.canonicalUrl || article.originalUrl),
-      externalUrl: article.canonicalUrl || article.originalUrl
+      note: isTextSource ? "テキスト投入" : getUrlHost(article.canonicalUrl || article.originalUrl),
+      enabled: !isTextSource && Boolean(article.canonicalUrl || article.originalUrl),
+      externalUrl: isTextSource ? "" : article.canonicalUrl || article.originalUrl
     },
   ].forEach((item) => els.detailActions.appendChild(createDestinationButton(item)));
 
@@ -1409,6 +1421,122 @@ function isListSearchAvailable() {
   return !state.generationPanel.open && els.slidesViewer.hidden && !isDetailContextOpen();
 }
 
+const GENERATION_TEXT_MAX_LENGTH = 100000;
+const GENERATION_REQUEST_WATCH_TIMEOUT_MS = 30 * 60 * 1000;
+
+function setGenerationMode(mode) {
+  state.generationPanel.mode = mode === "text" ? "text" : "url";
+  const isText = state.generationPanel.mode === "text";
+  els.generationModeSegments.forEach((segment) => {
+    const active = segment.dataset.generationMode === state.generationPanel.mode;
+    segment.classList.toggle("is-active", active);
+    segment.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  els.generationUrlField.hidden = isText;
+  els.generationTextFields.hidden = !isText;
+  // テキストモードはスライド生成が必須(Rulesの slides === true 検証と対応)
+  if (isText) els.generationSlidesToggle.checked = true;
+  syncGenerationSubmitting();
+  setGenerationMessage("");
+}
+
+function updateGenerationTextCount() {
+  const length = els.generationTextInput.value.length;
+  els.generationTextCount.textContent = `${length.toLocaleString("ja-JP")} / 100,000字`;
+  els.generationTextCount.classList.toggle("is-error", length > GENERATION_TEXT_MAX_LENGTH);
+}
+
+function validateTextGenerationPayload() {
+  const text = els.generationTextInput.value.replace(/\r\n/g, "\n").trim();
+  if (!text) return { error: "本文テキストを貼り付けてください" };
+  if (text.length > GENERATION_TEXT_MAX_LENGTH) return { error: "本文は100,000字以内にしてください" };
+  const manga = els.generationMangaToggle.checked;
+  const title = els.generationTitleInput.value.trim();
+  const audience = els.generationAudienceInput.value.trim();
+  const focus = els.generationFocusInput.value.trim();
+  return {
+    payload: {
+      kind: "text",
+      text,
+      slides: true,
+      manga,
+      ...(title ? { title } : {}),
+      ...(audience ? { audience } : {}),
+      ...(focus ? { focus } : {}),
+      ...(manga
+        ? {
+            mangaOptions: {
+              artStyle: els.generationMangaArtStyleSelect.value,
+              treatment: els.generationMangaTreatmentSelect.value,
+              ...(els.generationMangaGenreSelect.value ? { genre: els.generationMangaGenreSelect.value } : {})
+            }
+          }
+        : {})
+    }
+  };
+}
+
+async function submitTextGenerationRequest() {
+  const user = firebase.auth().currentUser;
+  if (!user) {
+    setGenerationMessage("サインインが必要です", true);
+    return;
+  }
+  const result = validateTextGenerationPayload();
+  if (result.error) {
+    setGenerationMessage(result.error, true);
+    return;
+  }
+  state.generationPanel.submitting = true;
+  setGenerationMessage("");
+  syncGenerationSubmitting();
+  try {
+    const ref = firebase.database().ref("/generationRequests").push();
+    await ref.set({
+      ownerUid: user.uid,
+      ...result.payload,
+      status: "queued",
+      createdAt: new Date().toISOString(),
+      trigger: { provider: "web" }
+    });
+    watchGenerationRequestStatus(ref);
+    closeGenerationPanelAfterSubmit();
+    showSaveStatus("テキストの生成依頼を登録しました");
+  } catch (error) {
+    state.generationPanel.submitting = false;
+    setGenerationMessage(
+      /permission_denied/i.test(String(error && error.message))
+        ? "生成依頼の権限がありません"
+        : "生成依頼の登録に失敗しました。もう一度お試しください",
+      true
+    );
+    syncGenerationSubmitting();
+  }
+}
+
+function watchGenerationRequestStatus(ref) {
+  let settled = false;
+  let timer = null;
+  const handler = (snapshot) => {
+    const value = snapshot.val();
+    if (!value || settled) return;
+    if (value.status === "done") {
+      settle();
+      showSaveStatus("テキスト投入のスライド生成が完了しました");
+    } else if (value.status === "failed") {
+      settle();
+      showSaveStatus("テキスト投入の生成に失敗しました");
+    }
+  };
+  const settle = () => {
+    settled = true;
+    ref.off("value", handler);
+    if (timer) window.clearTimeout(timer);
+  };
+  timer = window.setTimeout(settle, GENERATION_REQUEST_WATCH_TIMEOUT_MS);
+  ref.on("value", handler);
+}
+
 function openGenerationPanel(options = {}) {
   if (!els.slidesViewer.hidden) return;
   closeSearchBar({ keepQuery: true });
@@ -1417,9 +1545,14 @@ function openGenerationPanel(options = {}) {
     open: true,
     submitting: false,
     error: "",
-    sourceContext: article ? "detail" : "list"
+    sourceContext: article ? "detail" : "list",
+    mode: "url"
   };
   els.generationUrlInput.value = options.sourceUrl || (article ? article.canonicalUrl || article.originalUrl || "" : "");
+  els.generationTitleInput.value = "";
+  els.generationTextInput.value = "";
+  updateGenerationTextCount();
+  setGenerationMode("url");
   els.generationSlidesToggle.checked = false;
   els.generationAudienceInput.value = "";
   els.generationFocusInput.value = "";
@@ -1477,6 +1610,10 @@ function validateGenerationPayload() {
 async function submitGenerationRequest(event) {
   event.preventDefault();
   if (state.generationPanel.submitting) return;
+  if (state.generationPanel.mode === "text") {
+    await submitTextGenerationRequest();
+    return;
+  }
   if (!apiClient.hasApiUrl()) {
     setGenerationMessage("GAS API URLが設定されていません", true);
     return;
@@ -1534,17 +1671,20 @@ function syncGenerationSubmitting() {
   const submitting = state.generationPanel.submitting;
   [
     els.generationUrlInput,
-    els.generationSlidesToggle,
+    els.generationTitleInput,
+    els.generationTextInput,
     els.generationAudienceInput,
     els.generationFocusInput,
     els.generationMangaToggle,
     els.generationMangaArtStyleSelect,
     els.generationMangaTreatmentSelect,
     els.generationMangaGenreSelect,
-    els.generationSubmitButton
+    els.generationSubmitButton,
+    ...els.generationModeSegments
   ].forEach((node) => {
     if (node) node.disabled = submitting;
   });
+  els.generationSlidesToggle.disabled = submitting || state.generationPanel.mode === "text";
   els.generationSubmitButton.textContent = submitting ? "送信中..." : "生成を依頼";
 }
 
@@ -2065,6 +2205,7 @@ function statusChip(label, status) {
 function sourceLabel(kind) {
   if (kind === "youtube") return "YouTube";
   if (kind === "web") return "Web";
+  if (kind === "text") return "テキスト";
   return kind || "Source";
 }
 
