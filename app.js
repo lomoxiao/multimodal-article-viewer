@@ -1694,7 +1694,11 @@ function openGenerationPanel(options = {}) {
     sourceContext: article ? "detail" : "list",
     mode: "url"
   };
-  els.generationUrlInput.value = options.sourceUrl || (article ? article.canonicalUrl || article.originalUrl || "" : "");
+  // テキスト投入記事の canonical(text:...) は有効なURLでないためURL欄に入れない
+  const articleUrl = article && article.source.kind !== "text"
+    ? article.canonicalUrl || article.originalUrl || ""
+    : "";
+  els.generationUrlInput.value = options.sourceUrl || articleUrl;
   els.generationTitleInput.value = "";
   els.generationTextInput.value = "";
   updateGenerationTextCount();

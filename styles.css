@@ -1772,11 +1772,6 @@ body.slides-viewer-open {
     padding-bottom: max(18px, env(safe-area-inset-bottom));
   }
 
-  /* 底部トリアージバーとFABの重なり回避。タブレットはシートでないため対象外 */
-  body.detail-context-open .floating-actions {
-    display: none;
-  }
-
   .detail-operation-backdrop {
     display: none;
   }
