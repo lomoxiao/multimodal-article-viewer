@@ -137,6 +137,11 @@ const els = {
   filterChips: document.getElementById("filterChips"),
   filterPanel: document.getElementById("filterPanel"),
   detailTriage: document.getElementById("detailTriage"),
+  detailTldr: document.getElementById("detailTldr"),
+  readerViewer: document.getElementById("readerViewer"),
+  readerBackButton: document.getElementById("readerBackButton"),
+  readerTitle: document.getElementById("readerTitle"),
+  readerBody: document.getElementById("readerBody"),
   workspacePane: document.getElementById("workspacePane"),
   emptyWorkspace: document.getElementById("emptyWorkspace"),
   detailPanel: document.getElementById("detailPanel"),
@@ -236,6 +241,7 @@ function wireUiEvents() {
 
   els.closeDetailButton.addEventListener("click", closeMobileWorkspace);
   els.sheetBackdrop.addEventListener("click", closeMobileWorkspace);
+  els.readerBackButton.addEventListener("click", closeReaderView);
   els.editModeToggle.addEventListener("change", () => {
     state.detailMode = state.isEditor && els.editModeToggle.checked ? "edit" : "view";
     closeOperationPanel({ force: true, render: false });
@@ -284,6 +290,10 @@ function wireUiEvents() {
     }
     if (event.key === "Escape" && state.isFilterPanelOpen) {
       toggleFilterPanel(false);
+      return;
+    }
+    if (event.key === "Escape" && !els.readerViewer.hidden) {
+      closeReaderView();
       return;
     }
     if (els.slidesViewer.hidden) return;
@@ -455,6 +465,7 @@ function normalizeArticle(raw) {
     },
     slides: normalizeArtifact(slides),
     manga: normalizeArtifact(manga),
+    tldr: typeof article.tldr === "string" ? article.tldr : "",
     deletedAt: article.deletedAt || "",
     updatedAt: article.updatedAt || article.registeredAt || ""
   };
@@ -826,6 +837,7 @@ function showDetail(article, options = {}) {
   document.body.classList.remove("slides-viewer-open");
   els.emptyWorkspace.hidden = true;
   els.slidesViewer.hidden = true;
+  els.readerViewer.hidden = true;
   els.detailPanel.hidden = false;
   els.workspacePane.classList.toggle("has-mobile-detail", Boolean(options.keepSheet));
   document.body.classList.toggle("sheet-open", Boolean(options.keepSheet));
@@ -840,20 +852,39 @@ function renderDetailContent(article) {
   els.detailTitle.textContent = article.title;
   els.detailHeadline.textContent = article.source.headline;
   renderTriageBar(article);
+  renderTldrBlock(article);
   els.editModeControl.hidden = !state.isEditor;
   els.editModeToggle.checked = state.isEditor && state.detailMode === "edit";
   els.detailActions.innerHTML = "";
 
   const isTextSource = article.source.kind === "text";
-  [
-    {
-      icon: getSourceDestinationIcon(article),
-      title: "元記事",
-      note: isTextSource ? "テキスト投入" : getUrlHost(article.canonicalUrl || article.originalUrl),
-      enabled: !isTextSource && Boolean(article.canonicalUrl || article.originalUrl),
-      externalUrl: isTextSource ? "" : article.canonicalUrl || article.originalUrl
-    },
-  ].forEach((item) => els.detailActions.appendChild(createDestinationButton(item)));
+  const sourceRows = isTextSource
+    ? [
+        {
+          icon: getSourceDestinationIcon(article),
+          title: "元記事",
+          note: "テキスト投入・リーダーで読む",
+          enabled: true,
+          action: () => openReaderView(article)
+        }
+      ]
+    : [
+        {
+          icon: getSourceDestinationIcon(article),
+          title: "元記事",
+          note: getUrlHost(article.canonicalUrl || article.originalUrl),
+          enabled: Boolean(article.canonicalUrl || article.originalUrl),
+          externalUrl: article.canonicalUrl || article.originalUrl
+        },
+        {
+          icon: DESTINATION_ICONS.globe,
+          title: "保存済み本文",
+          note: "リーダーで読む",
+          enabled: true,
+          action: () => openReaderView(article)
+        }
+      ];
+  sourceRows.forEach((item) => els.detailActions.appendChild(createDestinationButton(item)));
 
   if (state.detailMode === "edit" && state.isEditor) {
     els.detailActions.appendChild(renderEditableArtifactDestination(article, "slides"));
@@ -862,6 +893,121 @@ function renderDetailContent(article) {
     els.detailActions.appendChild(renderViewArtifactDestination(article, "slides"));
     els.detailActions.appendChild(renderViewArtifactDestination(article, "manga"));
   }
+}
+
+function renderTldrBlock(article) {
+  els.detailTldr.replaceChildren();
+  const lines = (article.tldr || "")
+    .split("\n")
+    .map((line) => line.replace(/^[-・•]\s*/, "").trim())
+    .filter(Boolean);
+  els.detailTldr.hidden = lines.length === 0;
+  els.detailPanel.classList.toggle("has-tldr", lines.length > 0);
+  if (!lines.length) return;
+  const label = document.createElement("p");
+  label.className = "detail-tldr-label";
+  label.textContent = "TLDR";
+  els.detailTldr.appendChild(label);
+  const list = document.createElement("ul");
+  lines.slice(0, 3).forEach((line) => {
+    const item = document.createElement("li");
+    item.textContent = line;
+    list.appendChild(item);
+  });
+  els.detailTldr.appendChild(list);
+}
+
+function openReaderView(article) {
+  closeSearchBar({ keepQuery: true });
+  closeGenerationPanel();
+  els.detailPanel.hidden = true;
+  els.emptyWorkspace.hidden = true;
+  els.slidesViewer.hidden = true;
+  els.readerViewer.hidden = false;
+  els.workspacePane.classList.add("has-mobile-detail");
+  document.body.classList.add("sheet-open");
+  els.sheetBackdrop.hidden = true;
+  els.readerTitle.textContent = article.title;
+  renderReaderMessage("保存済み本文を読み込んでいます...");
+  loadReaderContent(article);
+  syncChromeState();
+}
+
+function closeReaderView() {
+  if (els.readerViewer.hidden) return;
+  els.readerViewer.hidden = true;
+  showDetail(getSelectedArticle(), { keepSheet: true });
+}
+
+async function loadReaderContent(article) {
+  if (!/^[^.#$\[\]\/]+$/.test(article.articleId)) {
+    renderReaderMessage("記事IDが不正なため表示できません");
+    return;
+  }
+  try {
+    const snapshot = await firebase.database().ref(`articleSources/${article.articleId}`).once("value");
+    if (els.readerViewer.hidden) return;
+    const value = snapshot.val();
+    if (!value || !value.markdown) {
+      renderReaderMessage("この記事の保存済み本文はまだありません（次回の生成時に保存されます）");
+      return;
+    }
+    renderReaderMarkdown(value.markdown, value.extractedAt);
+  } catch (error) {
+    renderReaderMessage(
+      /permission_denied/i.test(String(error && error.message))
+        ? "保存済み本文の閲覧権限がありません"
+        : "保存済み本文を取得できませんでした"
+    );
+  }
+}
+
+function renderReaderMessage(message) {
+  els.readerBody.replaceChildren();
+  const paragraph = document.createElement("p");
+  paragraph.className = "reader-message";
+  paragraph.textContent = message;
+  els.readerBody.appendChild(paragraph);
+}
+
+// 生HTMLは一切通さず、すべてtextContent経由でDOMを組む(XSS防止)
+function renderReaderMarkdown(markdown, extractedAt) {
+  els.readerBody.replaceChildren();
+  if (extractedAt) {
+    const meta = document.createElement("p");
+    meta.className = "reader-meta";
+    meta.textContent = `保存日時: ${formatDate(extractedAt)}`;
+    els.readerBody.appendChild(meta);
+  }
+  markdown.split(/\n{2,}/).forEach((block) => {
+    const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
+    if (!lines.length) return;
+    const headingMatch = lines[0].match(/^(#{1,6})\s+(.*)$/);
+    if (headingMatch) {
+      const heading = document.createElement(`h${Math.min(headingMatch[1].length + 1, 4)}`);
+      heading.textContent = headingMatch[2];
+      els.readerBody.appendChild(heading);
+      lines.shift();
+      if (!lines.length) return;
+    }
+    if (lines.every((line) => /^[-・•*]\s+/.test(line))) {
+      const list = document.createElement("ul");
+      lines.forEach((line) => {
+        const item = document.createElement("li");
+        item.textContent = line.replace(/^[-・•*]\s+/, "");
+        list.appendChild(item);
+      });
+      els.readerBody.appendChild(list);
+      return;
+    }
+    const paragraph = document.createElement("p");
+    lines.forEach((line, index) => {
+      if (index > 0) paragraph.appendChild(document.createElement("br"));
+      paragraph.appendChild(document.createTextNode(line));
+    });
+    els.readerBody.appendChild(paragraph);
+  });
+  els.readerBody.scrollTop = 0;
 }
 
 function renderTriageBar(article) {
@@ -1418,7 +1564,7 @@ function isDetailContextOpen() {
 }
 
 function isListSearchAvailable() {
-  return !state.generationPanel.open && els.slidesViewer.hidden && !isDetailContextOpen();
+  return !state.generationPanel.open && els.slidesViewer.hidden && els.readerViewer.hidden && !isDetailContextOpen();
 }
 
 const GENERATION_TEXT_MAX_LENGTH = 100000;
@@ -1690,10 +1836,11 @@ function syncGenerationSubmitting() {
 
 function syncChromeState() {
   const slidesOpen = !els.slidesViewer.hidden;
+  const readerOpen = !els.readerViewer.hidden;
   const detailOpen = isDetailContextOpen();
   const generationOpen = state.generationPanel.open;
   const searchAvailable = isListSearchAvailable();
-  const showGenerationFab = !slidesOpen && !generationOpen;
+  const showGenerationFab = !slidesOpen && !generationOpen && !readerOpen;
   const showSearchFab = searchAvailable && !state.isSearchOpen;
 
   els.floatingActions.hidden = !showGenerationFab && !showSearchFab;
@@ -1718,6 +1865,7 @@ function openSlidesViewer(article) {
   state.pageWindowRequests = {};
   els.detailPanel.hidden = true;
   els.emptyWorkspace.hidden = true;
+  els.readerViewer.hidden = true;
   els.slidesViewer.hidden = false;
   els.workspacePane.classList.add("has-mobile-detail");
   document.body.classList.add("sheet-open", "slides-viewer-open");
@@ -1920,6 +2068,7 @@ function parseApiResponse(response) {
 
 function closeMobileWorkspace() {
   resetDetailEditing();
+  els.readerViewer.hidden = true;
   els.workspacePane.classList.remove("has-mobile-detail");
   document.body.classList.remove("sheet-open", "slides-viewer-open");
   els.sheetBackdrop.hidden = true;

@@ -457,6 +457,71 @@ h3 {
   min-height: 0;
 }
 
+.reader-viewer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 8px 8px 0 0;
+  background: var(--panel);
+}
+
+.reader-viewer[hidden] {
+  display: none;
+}
+
+.reader-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.reader-head h2 {
+  margin: 0;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reader-body {
+  overflow-y: auto;
+  padding: 16px 18px max(18px, env(safe-area-inset-bottom));
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.reader-body p {
+  margin: 0 0 14px;
+}
+
+.reader-body h2,
+.reader-body h3,
+.reader-body h4 {
+  margin: 22px 0 10px;
+  line-height: 1.4;
+}
+
+.reader-body ul {
+  margin: 0 0 14px;
+  padding-left: 20px;
+}
+
+.reader-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.reader-message {
+  color: var(--muted);
+  text-align: center;
+  padding: 32px 0;
+}
+
 .empty-workspace,
 .detail-panel,
 .slides-viewer {
@@ -485,6 +550,40 @@ h3 {
   padding: 18px;
   border-radius: 8px 8px 0 0;
   background: var(--panel);
+}
+
+/* TLDR行はある時だけ挿入される(hidden要素はグリッド行を消費しないため切り替える) */
+.detail-panel.has-tldr {
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+}
+
+.detail-tldr {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.detail-tldr[hidden] {
+  display: none;
+}
+
+.detail-tldr-label {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.detail-tldr ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .detail-panel > .destination-grid {
@@ -1653,11 +1752,17 @@ body.slides-viewer-open {
   }
 
   .workspace-pane.has-mobile-detail #detailPanel:not([hidden]),
-  .workspace-pane.has-mobile-detail #slidesViewer:not([hidden]) {
+  .workspace-pane.has-mobile-detail #slidesViewer:not([hidden]),
+  .workspace-pane.has-mobile-detail #readerViewer:not([hidden]) {
     display: grid;
     max-height: calc(100svh - 12px);
     overflow: auto;
     box-shadow: var(--shadow);
+  }
+
+  .workspace-pane.has-mobile-detail #readerViewer:not([hidden]) {
+    height: calc(100svh - 12px);
+    overflow: hidden;
   }
 
   .workspace-pane.has-mobile-detail #detailPanel:not([hidden]) {

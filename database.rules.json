@@ -68,6 +68,10 @@
         "createdAt": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 64" }
       }
     },
+    "articleSources": {
+      ".read": "auth != null && root.child('access/viewers').child(auth.uid).val() === true",
+      ".write": false
+    },
     "artifactDiagnostics": {
       ".read": "auth != null && root.child('access/editors').child(auth.uid).val() === true",
       ".write": false

@@ -69,11 +69,20 @@
           </div>
         </header>
         <p id="detailHeadline" class="detail-headline"></p>
+        <div id="detailTldr" class="detail-tldr" hidden></div>
         <div id="detailActions" class="destination-grid"></div>
         <div id="detailTriage" class="detail-triage"></div>
         <div id="detailOperationBackdrop" class="detail-operation-backdrop" hidden></div>
         <section id="detailOperationPanel" class="detail-operation-panel" aria-label="成果物URLの編集" hidden></section>
       </article>
+
+      <section id="readerViewer" class="reader-viewer" aria-label="保存済み本文リーダー" hidden>
+        <header class="reader-head">
+          <button id="readerBackButton" class="viewer-pill" type="button">戻る</button>
+          <h2 id="readerTitle"></h2>
+        </header>
+        <div id="readerBody" class="reader-body" tabindex="0"></div>
+      </section>
 
       <section id="slidesViewer" class="slides-viewer" aria-label="Google Slides viewer" hidden>
         <header class="slides-head">
