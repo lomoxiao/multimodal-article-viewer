@@ -55,6 +55,12 @@ const state = {
   openSwipeArticleId: null,
   openSwipeSide: null,
   isFilterPanelOpen: false,
+  // articleId -> 保存済み本文の有無(undefined=未確認)。タップ時の遷移分岐に使う
+  articleSourceExists: {},
+  sourceChoiceReturnFocus: null,
+  settingsOpen: false,
+  sessionStatusRef: null,
+  sessionStatusHandler: null,
   pendingDeletedIds: new Set(),
   operationPanel: {
     type: null,
@@ -137,7 +143,6 @@ const els = {
   filterChips: document.getElementById("filterChips"),
   filterPanel: document.getElementById("filterPanel"),
   detailTriage: document.getElementById("detailTriage"),
-  detailTldr: document.getElementById("detailTldr"),
   readerViewer: document.getElementById("readerViewer"),
   readerBackButton: document.getElementById("readerBackButton"),
   readerTitle: document.getElementById("readerTitle"),
@@ -149,6 +154,8 @@ const els = {
   detailTitle: document.getElementById("detailTitle"),
   detailHeadline: document.getElementById("detailHeadline"),
   detailActions: document.getElementById("detailActions"),
+  sourceChoiceBackdrop: document.getElementById("sourceChoiceBackdrop"),
+  sourceChoiceSheet: document.getElementById("sourceChoiceSheet"),
   editModeControl: document.getElementById("editModeControl"),
   editModeToggle: document.getElementById("editModeToggle"),
   detailOperationBackdrop: document.getElementById("detailOperationBackdrop"),
@@ -173,6 +180,11 @@ const els = {
   loginButton: document.getElementById("loginButton"),
   authError: document.getElementById("authError"),
   signOutButton: document.getElementById("signOutButton"),
+  settingsButton: document.getElementById("settingsButton"),
+  settingsCloseButton: document.getElementById("settingsCloseButton"),
+  settingsBackdrop: document.getElementById("settingsBackdrop"),
+  settingsPanel: document.getElementById("settingsPanel"),
+  sessionStatusList: document.getElementById("sessionStatusList"),
   authWatchdogPanel: document.getElementById("authWatchdogPanel"),
   watchdogReloadButton: document.getElementById("watchdogReloadButton"),
   watchdogResetButton: document.getElementById("watchdogResetButton"),
@@ -242,6 +254,10 @@ function wireUiEvents() {
   els.closeDetailButton.addEventListener("click", closeMobileWorkspace);
   els.sheetBackdrop.addEventListener("click", closeMobileWorkspace);
   els.readerBackButton.addEventListener("click", closeReaderView);
+  els.sourceChoiceBackdrop.addEventListener("click", () => closeSourceChoiceSheet());
+  els.settingsButton.addEventListener("click", openSettings);
+  els.settingsCloseButton.addEventListener("click", closeSettings);
+  els.settingsBackdrop.addEventListener("click", closeSettings);
   els.editModeToggle.addEventListener("change", () => {
     state.detailMode = state.isEditor && els.editModeToggle.checked ? "edit" : "view";
     closeOperationPanel({ force: true, render: false });
@@ -290,6 +306,14 @@ function wireUiEvents() {
     }
     if (event.key === "Escape" && state.isFilterPanelOpen) {
       toggleFilterPanel(false);
+      return;
+    }
+    if (event.key === "Escape" && !els.sourceChoiceSheet.hidden) {
+      closeSourceChoiceSheet();
+      return;
+    }
+    if (event.key === "Escape" && state.settingsOpen) {
+      closeSettings();
       return;
     }
     if (event.key === "Escape" && !els.readerViewer.hidden) {
@@ -465,7 +489,6 @@ function normalizeArticle(raw) {
     },
     slides: normalizeArtifact(slides),
     manga: normalizeArtifact(manga),
-    tldr: typeof article.tldr === "string" ? article.tldr : "",
     deletedAt: article.deletedAt || "",
     updatedAt: article.updatedAt || article.registeredAt || ""
   };
@@ -852,39 +875,11 @@ function renderDetailContent(article) {
   els.detailTitle.textContent = article.title;
   els.detailHeadline.textContent = article.source.headline;
   renderTriageBar(article);
-  renderTldrBlock(article);
   els.editModeControl.hidden = !state.isEditor;
   els.editModeToggle.checked = state.isEditor && state.detailMode === "edit";
   els.detailActions.innerHTML = "";
 
-  const isTextSource = article.source.kind === "text";
-  const sourceRows = isTextSource
-    ? [
-        {
-          icon: getSourceDestinationIcon(article),
-          title: "元記事",
-          note: "テキスト投入・リーダーで読む",
-          enabled: true,
-          action: () => openReaderView(article)
-        }
-      ]
-    : [
-        {
-          icon: getSourceDestinationIcon(article),
-          title: "元記事",
-          note: getUrlHost(article.canonicalUrl || article.originalUrl),
-          enabled: Boolean(article.canonicalUrl || article.originalUrl),
-          externalUrl: article.canonicalUrl || article.originalUrl
-        },
-        {
-          icon: DESTINATION_ICONS.globe,
-          title: "保存済み本文",
-          note: "リーダーで読む",
-          enabled: true,
-          action: () => openReaderView(article)
-        }
-      ];
-  sourceRows.forEach((item) => els.detailActions.appendChild(createDestinationButton(item)));
+  els.detailActions.appendChild(createSourceDestination(article));
 
   if (state.detailMode === "edit" && state.isEditor) {
     els.detailActions.appendChild(renderEditableArtifactDestination(article, "slides"));
@@ -895,26 +890,108 @@ function renderDetailContent(article) {
   }
 }
 
-function renderTldrBlock(article) {
-  els.detailTldr.replaceChildren();
-  const lines = (article.tldr || "")
-    .split("\n")
-    .map((line) => line.replace(/^[-・•]\s*/, "").trim())
-    .filter(Boolean);
-  els.detailTldr.hidden = lines.length === 0;
-  els.detailPanel.classList.toggle("has-tldr", lines.length > 0);
-  if (!lines.length) return;
-  const label = document.createElement("p");
-  label.className = "detail-tldr-label";
-  label.textContent = "TLDR";
-  els.detailTldr.appendChild(label);
-  const list = document.createElement("ul");
-  lines.slice(0, 3).forEach((line) => {
-    const item = document.createElement("li");
-    item.textContent = line;
-    list.appendChild(item);
+// 元記事メニュー: テキスト記事はリーダー直行、Web/YouTubeは外部URL。
+// 保存済み本文が存在するWeb/YouTube記事だけ、タップでボトムシート2択を出す。
+function createSourceDestination(article) {
+  const externalUrl = article.canonicalUrl || article.originalUrl;
+  const isTextSource = article.source.kind === "text";
+  const icon = getSourceDestinationIcon(article);
+
+  if (isTextSource) {
+    return createDestinationButton({
+      icon,
+      title: "元記事",
+      note: "テキスト投入・リーダーで読む",
+      enabled: true,
+      action: () => openReaderView(article)
+    });
+  }
+
+  const hasSource = state.articleSourceExists[article.articleId];
+  if (hasSource === undefined) {
+    // 未確認: 安全側で外部リンクとして描画し、判明したら再描画で2択へ差し替える
+    checkArticleSourceExists(article);
+  }
+
+  if (hasSource === true) {
+    return createDestinationButton({
+      icon,
+      title: "元記事",
+      note: "開き方を選択",
+      enabled: true,
+      action: () => openSourceChoiceSheet(article)
+    });
+  }
+
+  return createDestinationButton({
+    icon,
+    title: "元記事",
+    note: getUrlHost(externalUrl),
+    enabled: Boolean(externalUrl),
+    externalUrl
   });
-  els.detailTldr.appendChild(list);
+}
+
+async function checkArticleSourceExists(article) {
+  if (!/^[^.#$\[\]\/]+$/.test(article.articleId)) {
+    state.articleSourceExists[article.articleId] = false;
+    return;
+  }
+  try {
+    // 本文全体(最大150KB)ではなく extractedAt だけ読んで存在判定する
+    const snapshot = await firebase.database().ref(`articleSources/${article.articleId}/extractedAt`).once("value");
+    state.articleSourceExists[article.articleId] = snapshot.exists();
+  } catch {
+    state.articleSourceExists[article.articleId] = false;
+  }
+  const selected = getSelectedArticle();
+  if (selected && selected.articleId === article.articleId && !els.detailPanel.hidden) {
+    renderDetailContent(selected);
+  }
+}
+
+function openSourceChoiceSheet(article) {
+  const externalUrl = article.canonicalUrl || article.originalUrl;
+  state.sourceChoiceReturnFocus = document.activeElement;
+  els.sourceChoiceSheet.replaceChildren();
+
+  const external = document.createElement("a");
+  external.className = "source-choice-button";
+  configureExternalLink(external, externalUrl);
+  external.innerHTML = `<strong>元記事を開く</strong><small>${escapeHtml(getUrlHost(externalUrl))}</small>`;
+  external.addEventListener("click", () => closeSourceChoiceSheet({ skipFocus: true }));
+
+  const reader = document.createElement("button");
+  reader.type = "button";
+  reader.className = "source-choice-button";
+  reader.innerHTML = "<strong>保存済み本文を読む</strong><small>リーダーで表示</small>";
+  reader.addEventListener("click", () => {
+    closeSourceChoiceSheet({ skipFocus: true });
+    openReaderView(article);
+  });
+
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "source-choice-button is-cancel";
+  cancel.textContent = "キャンセル";
+  cancel.addEventListener("click", () => closeSourceChoiceSheet());
+
+  els.sourceChoiceSheet.append(external, reader, cancel);
+  els.sourceChoiceBackdrop.hidden = false;
+  els.sourceChoiceSheet.hidden = false;
+  document.body.classList.add("source-choice-open");
+  window.requestAnimationFrame(() => external.focus());
+}
+
+function closeSourceChoiceSheet(options = {}) {
+  if (els.sourceChoiceSheet.hidden) return;
+  els.sourceChoiceBackdrop.hidden = true;
+  els.sourceChoiceSheet.hidden = true;
+  els.sourceChoiceSheet.replaceChildren();
+  document.body.classList.remove("source-choice-open");
+  const returnFocus = state.sourceChoiceReturnFocus;
+  state.sourceChoiceReturnFocus = null;
+  if (!options.skipFocus && returnFocus?.isConnected) returnFocus.focus();
 }
 
 function openReaderView(article) {
@@ -2441,8 +2518,10 @@ function escapeHtml(value) {
 
 function showAuthGate(message) {
   settleAuthWatchdog();
+  closeSettings();
   els.authGate.hidden = false;
   els.signOutButton.hidden = true;
+  els.settingsButton.hidden = true;
   if (message) {
     els.authError.textContent = message;
     els.authError.hidden = false;
@@ -2454,6 +2533,107 @@ function hideAuthGate() {
   els.authGate.hidden = true;
   els.authError.hidden = true;
   els.signOutButton.hidden = false;
+  els.settingsButton.hidden = false;
+}
+
+function openSettings() {
+  state.settingsOpen = true;
+  els.settingsBackdrop.hidden = false;
+  els.settingsPanel.hidden = false;
+  document.body.classList.add("settings-open");
+  startSessionStatusSubscription();
+  window.requestAnimationFrame(() => els.settingsCloseButton.focus());
+}
+
+function closeSettings() {
+  if (!state.settingsOpen) return;
+  state.settingsOpen = false;
+  els.settingsBackdrop.hidden = true;
+  els.settingsPanel.hidden = true;
+  document.body.classList.remove("settings-open");
+  stopSessionStatusSubscription();
+  els.settingsButton.focus();
+}
+
+function startSessionStatusSubscription() {
+  stopSessionStatusSubscription();
+  const ref = firebase.database().ref("/sessionStatus");
+  const handler = (snapshot) => renderSessionStatusList(snapshot.val() || {});
+  const errorHandler = () => {
+    els.sessionStatusList.innerHTML = '<p class="session-status-empty">セッション情報を取得できませんでした。</p>';
+  };
+  state.sessionStatusRef = ref;
+  state.sessionStatusHandler = handler;
+  ref.on("value", handler, errorHandler);
+}
+
+function stopSessionStatusSubscription() {
+  if (state.sessionStatusRef && state.sessionStatusHandler) {
+    state.sessionStatusRef.off("value", state.sessionStatusHandler);
+  }
+  state.sessionStatusRef = null;
+  state.sessionStatusHandler = null;
+}
+
+function renderSessionStatusList(value) {
+  const entries = Object.values(value).filter((entry) => entry && entry.domain);
+  entries.sort((a, b) => String(a.domain).localeCompare(String(b.domain)));
+  els.sessionStatusList.replaceChildren();
+
+  if (!entries.length) {
+    els.sessionStatusList.innerHTML = '<p class="session-status-empty">登録済みのセッションはありません。</p>';
+    return;
+  }
+
+  entries.forEach((entry) => {
+    const badge = sessionStatusBadge(entry);
+    const row = document.createElement("div");
+    row.className = "session-status-row";
+    const cookieLine = formatCookieExpiry(entry.cookieExpiresAt);
+    row.innerHTML = `
+      <div class="session-status-main">
+        <span class="session-status-domain">${escapeHtml(entry.domain)}</span>
+        <span class="session-status-badge is-${badge.tone}">${escapeHtml(badge.label)}</span>
+      </div>
+      <div class="session-status-meta">
+        <span>取得: ${escapeHtml(entry.capturedAt ? formatDate(entry.capturedAt) : "不明")}</span>
+        <span>${escapeHtml(cookieLine)}</span>
+      </div>
+    `;
+    els.sessionStatusList.appendChild(row);
+  });
+}
+
+function sessionStatusBadge(entry) {
+  if (entry.lastResult === "expired") return { tone: "bad", label: "要再取得" };
+  if (isCookieExpired(entry.cookieExpiresAt)) return { tone: "bad", label: "期限切れの可能性" };
+  if (isCookieExpiringSoon(entry.cookieExpiresAt)) return { tone: "warn", label: "期限が近い" };
+  if (entry.lastResult === "ok") return { tone: "good", label: "有効" };
+  return { tone: "muted", label: "未確認" };
+}
+
+function formatCookieExpiry(cookieExpiresAt) {
+  if (!cookieExpiresAt) return "cookie期限: 不明（目安なし）";
+  const days = daysUntil(cookieExpiresAt);
+  if (days === null) return "cookie期限: 不明（目安なし）";
+  if (days < 0) return "cookie期限: 経過";
+  return `cookie期限: あと約${days}日（目安）`;
+}
+
+function daysUntil(iso) {
+  const time = new Date(iso).getTime();
+  if (Number.isNaN(time)) return null;
+  return Math.floor((time - Date.now()) / 86400000);
+}
+
+function isCookieExpired(iso) {
+  const days = iso ? daysUntil(iso) : null;
+  return days !== null && days < 0;
+}
+
+function isCookieExpiringSoon(iso) {
+  const days = iso ? daysUntil(iso) : null;
+  return days !== null && days >= 0 && days <= 7;
 }
 
 function startAuthWatchdog() {

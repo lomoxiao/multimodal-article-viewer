@@ -72,6 +72,10 @@
       ".read": "auth != null && root.child('access/viewers').child(auth.uid).val() === true",
       ".write": false
     },
+    "sessionStatus": {
+      ".read": "auth != null && root.child('access/viewers').child(auth.uid).val() === true",
+      ".write": false
+    },
     "artifactDiagnostics": {
       ".read": "auth != null && root.child('access/editors').child(auth.uid).val() === true",
       ".write": false
