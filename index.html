@@ -114,6 +114,16 @@
     </section>
   </main>
 
+  <div id="videoViewerBackdrop" class="video-viewer-backdrop" hidden></div>
+  <section id="videoViewer" class="video-viewer" role="dialog" aria-modal="true" aria-labelledby="videoViewerTitle" hidden>
+    <header class="video-viewer-head">
+      <button id="videoViewerCloseButton" class="viewer-pill" type="button">戻る</button>
+      <h2 id="videoViewerTitle"></h2>
+      <a id="openVideoExternal" class="viewer-pill" target="_blank" rel="noopener">Google Driveで開く</a>
+    </header>
+    <div class="video-frame-wrap"><iframe id="videoFrame" title="解説動画" allow="autoplay; fullscreen" allowfullscreen></iframe></div>
+  </section>
+
   <div id="sheetBackdrop" class="sheet-backdrop" hidden></div>
   <div id="saveStatus" class="save-status" role="status" aria-live="polite" hidden></div>
 
@@ -189,6 +199,10 @@
           <label class="generation-check" for="generationMangaToggle">
             <input id="generationMangaToggle" type="checkbox">
             <span>漫画 / NotebookLM</span>
+          </label>
+          <label class="generation-check" for="generationVideoToggle">
+            <input id="generationVideoToggle" type="checkbox">
+            <span>60秒解説動画</span>
           </label>
         </fieldset>
         <div class="generation-options">

@@ -12,7 +12,8 @@ const DESTINATION_ICONS = {
   x: { src: "assets/brands/x.png", className: "is-x" },
   youtube: { src: "assets/brands/youtube.png", className: "is-youtube" },
   slides: { src: "assets/brands/google-slides.png", className: "is-google-slides" },
-  notebookLm: { src: "assets/brands/notebooklm.png", className: "is-notebooklm" }
+  notebookLm: { src: "assets/brands/notebooklm.png", className: "is-notebooklm" },
+  video: { src: "assets/icons/video.svg", className: "is-video" }
 };
 
 const SWIPE_ACTION_WIDTH = 88;
@@ -163,6 +164,12 @@ const els = {
   closeDetailButton: document.getElementById("closeDetailButton"),
   sheetBackdrop: document.getElementById("sheetBackdrop"),
   slidesViewer: document.getElementById("slidesViewer"),
+  videoViewer: document.getElementById("videoViewer"),
+  videoViewerBackdrop: document.getElementById("videoViewerBackdrop"),
+  videoViewerCloseButton: document.getElementById("videoViewerCloseButton"),
+  videoViewerTitle: document.getElementById("videoViewerTitle"),
+  videoFrame: document.getElementById("videoFrame"),
+  openVideoExternal: document.getElementById("openVideoExternal"),
   slidesTitle: document.getElementById("slidesTitle"),
   openSlidesExternal: document.getElementById("openSlidesExternal"),
   fullscreenButton: document.getElementById("fullscreenButton"),
@@ -210,6 +217,7 @@ const els = {
   generationAudienceInput: document.getElementById("generationAudienceInput"),
   generationFocusInput: document.getElementById("generationFocusInput"),
   generationMangaToggle: document.getElementById("generationMangaToggle"),
+  generationVideoToggle: document.getElementById("generationVideoToggle"),
   generationMangaFields: document.getElementById("generationMangaFields"),
   generationMangaArtStyleSelect: document.getElementById("generationMangaArtStyleSelect"),
   generationMangaTreatmentSelect: document.getElementById("generationMangaTreatmentSelect"),
@@ -266,6 +274,8 @@ function wireUiEvents() {
   });
   els.detailOperationBackdrop.addEventListener("click", () => closeOperationPanel());
   els.backToDetailButton.addEventListener("click", returnFromSlidesViewer);
+  els.videoViewerCloseButton.addEventListener("click", closeVideoViewer);
+  els.videoViewerBackdrop.addEventListener("click", closeVideoViewer);
   els.fullscreenButton.addEventListener("click", toggleViewerFullscreen);
   els.prevSlideButton.addEventListener("click", () => setSlideIndex(state.currentSlideIndex - 1));
   els.nextSlideButton.addEventListener("click", () => setSlideIndex(state.currentSlideIndex + 1));
@@ -318,6 +328,10 @@ function wireUiEvents() {
     }
     if (event.key === "Escape" && !els.readerViewer.hidden) {
       closeReaderView();
+      return;
+    }
+    if (event.key === "Escape" && !els.videoViewer.hidden) {
+      closeVideoViewer();
       return;
     }
     if (els.slidesViewer.hidden) return;
@@ -478,6 +492,7 @@ function normalizeArticle(raw) {
   const source = article.source || {};
   const slides = article.slides || {};
   const manga = article.manga || {};
+  const video = article.video || {};
   return {
     articleId: article.articleId || article.canonicalUrl || article.originalUrl || "",
     canonicalUrl: article.canonicalUrl || article.originalUrl || "",
@@ -489,20 +504,24 @@ function normalizeArticle(raw) {
     },
     slides: normalizeArtifact(slides),
     manga: normalizeArtifact(manga),
+    video: normalizeArtifact(video),
     deletedAt: article.deletedAt || "",
     updatedAt: article.updatedAt || article.registeredAt || ""
   };
 }
 
 function normalizeArtifact(artifact) {
+  const value = artifact || {};
   return {
-    status: artifact.status || "pending",
-    stage: artifact.stage || "",
-    statusMessage: artifact.statusMessage || "",
-    url: artifact.url || "",
-    origin: artifact.origin || "",
-    locked: Boolean(artifact.locked),
-    updatedAt: artifact.updatedAt || ""
+    exists: Object.keys(value).length > 0,
+    status: value.status || "pending",
+    stage: value.stage || "",
+    statusMessage: value.statusMessage || "",
+    url: value.url || "",
+    fileId: value.fileId || "",
+    origin: value.origin || "",
+    locked: Boolean(value.locked),
+    updatedAt: value.updatedAt || ""
   };
 }
 
@@ -601,6 +620,7 @@ function renderList() {
           ${sourceChip(article.source.kind)}
           ${statusChip("Slides", article.slides.status)}
           ${statusChip("Manga", article.manga.status)}
+          ${article.video.exists ? statusChip("Video", article.video.status) : ""}
           ${readState === "later" ? '<span class="chip is-later">あとで</span>' : ""}
         </div>
         <p class="row-title">${escapeHtml(article.title)}</p>
@@ -884,9 +904,11 @@ function renderDetailContent(article) {
   if (state.detailMode === "edit" && state.isEditor) {
     els.detailActions.appendChild(renderEditableArtifactDestination(article, "slides"));
     els.detailActions.appendChild(renderEditableArtifactDestination(article, "manga"));
+    els.detailActions.appendChild(renderEditableArtifactDestination(article, "video"));
   } else {
     els.detailActions.appendChild(renderViewArtifactDestination(article, "slides"));
     els.detailActions.appendChild(renderViewArtifactDestination(article, "manga"));
+    if (article.video.exists) els.detailActions.appendChild(renderViewArtifactDestination(article, "video"));
   }
 }
 
@@ -1166,6 +1188,7 @@ function renderViewArtifactDestination(article, artifactType) {
   };
   if (artifactType === "slides") item.action = () => openSlidesViewer(article);
   if (artifactType === "manga" && completed) item.externalUrl = artifact.url;
+  if (artifactType === "video" && completed) item.action = () => openVideoViewer(article);
   return createDestinationButton(item);
 }
 
@@ -1194,16 +1217,22 @@ function renderEditableArtifactDestination(article, artifactType) {
 }
 
 function artifactIcon(artifactType) {
-  return artifactType === "slides" ? DESTINATION_ICONS.slides : DESTINATION_ICONS.notebookLm;
+  if (artifactType === "slides") return DESTINATION_ICONS.slides;
+  if (artifactType === "video") return DESTINATION_ICONS.video;
+  return DESTINATION_ICONS.notebookLm;
 }
 
 function artifactTitle(artifactType) {
-  return artifactType === "slides" ? "Google Slides" : "漫画 / NotebookLM";
+  if (artifactType === "slides") return "Google Slides";
+  if (artifactType === "video") return "60秒解説動画";
+  return "漫画 / NotebookLM";
 }
 
 function artifactViewNote(artifactType, artifact) {
   if (artifact.status === "completed" && artifact.url) {
-    return artifactType === "slides" ? "ビューアで開く" : "NotebookLMを外部で開く";
+    if (artifactType === "slides") return "ビューアで開く";
+    if (artifactType === "video") return "Viewer内で再生";
+    return "NotebookLMを外部で開く";
   }
   if (artifact.status === "processing") return "生成中";
   if (artifact.status === "action_required") return artifact.statusMessage || "手動での確認が必要です";
@@ -1272,6 +1301,40 @@ function validateGoogleSlidesUrl(value) {
   } catch {
     return { error: "このURLはGoogle SlidesのURLではありません" };
   }
+}
+
+function validateGoogleDriveVideoUrl(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return { error: "Google Driveの動画URLを入力してください" };
+  if (trimmed.length > 2048) return { error: "URLは2,048文字以内で入力してください" };
+  try {
+    const url = new URL(trimmed);
+    const match = url.pathname.match(/^\/file\/d\/([^/]+)/);
+    if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "drive.google.com" || !match) {
+      return { error: "このURLはGoogle DriveのファイルURLではありません" };
+    }
+    return { url: `https://drive.google.com/file/d/${match[1]}/view`, fileId: match[1] };
+  } catch {
+    return { error: "このURLはGoogle DriveのファイルURLではありません" };
+  }
+}
+
+function openVideoViewer(article) {
+  const fileId = article.video.fileId || validateGoogleDriveVideoUrl(article.video.url).fileId;
+  if (!fileId) return;
+  els.videoViewerTitle.textContent = article.title;
+  els.videoFrame.src = `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview`;
+  els.openVideoExternal.href = article.video.url || `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`;
+  els.videoViewerBackdrop.hidden = false;
+  els.videoViewer.hidden = false;
+  syncChromeState();
+}
+
+function closeVideoViewer() {
+  els.videoFrame.src = "about:blank";
+  els.videoViewer.hidden = true;
+  els.videoViewerBackdrop.hidden = true;
+  syncChromeState();
 }
 
 function openArtifactUrlPanel(article, artifactType, options = {}) {
@@ -1361,7 +1424,9 @@ function renderOperationPanel() {
   const description = isUpdate ? "現在のURLを差し替えます" : "成果物をこの記事へ紐付けます";
   const placeholder = artifactType === "slides"
     ? "https://docs.google.com/presentation/d/.../edit"
-    : "https://notebooklm.google.com/notebook/...";
+    : artifactType === "video"
+      ? "https://drive.google.com/file/d/.../view"
+      : "https://notebooklm.google.com/notebook/...";
   els.detailOperationPanel.innerHTML = `
     <form class="operation-panel-form" novalidate>
       <header class="operation-panel-head">
@@ -1434,6 +1499,8 @@ function renderStatusDetailPanel(article, artifactType) {
             ? `<dl class="status-detail-list">
                 <div><dt>コード</dt><dd>${escapeHtml(diagnostic.code || "-")}</dd></div>
                 ${diagnostic.jobId ? `<div><dt>Job ID</dt><dd>${escapeHtml(diagnostic.jobId)}</dd></div>` : ""}
+                ${diagnostic.projectArchiveFileId ? `<div><dt>Archive ID</dt><dd>${escapeHtml(diagnostic.projectArchiveFileId)}</dd></div>` : ""}
+                ${diagnostic.manifestFileId ? `<div><dt>Manifest ID</dt><dd>${escapeHtml(diagnostic.manifestFileId)}</dd></div>` : ""}
               </dl><pre>${escapeHtml(diagnostic.detail || "詳細なし")}</pre>`
             : `<p>${escapeHtml(state.operationPanel.error || "技術情報はありません")}</p>`}
       </section>`
@@ -1453,6 +1520,9 @@ function renderStatusDetailPanel(article, artifactType) {
           <div><dt>工程</dt><dd>${escapeHtml(stageLabel(artifact.stage))}</dd></div>
         </dl>
         <p class="status-guidance">${escapeHtml(artifact.statusMessage || defaultStatusMessage(artifact))}</p>
+        ${artifactType === "video" && (artifact.status === "action_required" || artifact.status === "failed")
+          ? '<p class="status-guidance">診断コードの原因を解消後、再生成を依頼してください。pending / processingで中断したジョブはサービス再起動時にcheckpointから自動再開します。</p>'
+          : ""}
         ${technicalMarkup}
       </div>
       <footer class="operation-panel-footer status-detail-actions">
@@ -1472,6 +1542,7 @@ function renderStatusDetailPanel(article, artifactType) {
 function getStatusArtifactType() {
   if (state.operationPanel.type === "slides-status") return "slides";
   if (state.operationPanel.type === "manga-status") return "manga";
+  if (state.operationPanel.type === "video-status") return "video";
   return null;
 }
 
@@ -1482,7 +1553,14 @@ function stageLabel(stage) {
     source_registration: "2/4 NotebookLMソース登録",
     deck_generation: "3/4 スライドデック生成",
     url_retrieval: "4/4 URL取得",
-    slides_generation: "Google Slides生成"
+    slides_generation: "Google Slides生成",
+    video_queued: "動画キュー待機",
+    video_planning: "動画構成生成",
+    video_tts: "音声生成",
+    video_captioning: "字幕生成",
+    video_transcribing: "字幕生成",
+    video_rendering: "動画レンダリング",
+    video_uploading: "Google Drive登録"
   };
   return labels[stage] || "工程情報なし";
 }
@@ -1497,6 +1575,7 @@ function defaultStatusMessage(artifact) {
 function getOperationArtifactType() {
   if (state.operationPanel.type === "slides-url") return "slides";
   if (state.operationPanel.type === "manga-url") return "manga";
+  if (state.operationPanel.type === "video-url") return "video";
   return null;
 }
 
@@ -1533,7 +1612,11 @@ function resetDetailEditing() {
 
 async function submitArtifactUrl(article, artifactType, value) {
   if (state.operationPanel.submitting) return;
-  const validation = artifactType === "slides" ? validateGoogleSlidesUrl(value) : validateNotebookLmUrl(value);
+  const validation = artifactType === "slides"
+    ? validateGoogleSlidesUrl(value)
+    : artifactType === "video"
+      ? validateGoogleDriveVideoUrl(value)
+      : validateNotebookLmUrl(value);
   if (validation.error) {
     state.operationPanel.error = validation.error;
     renderOperationPanel();
@@ -1562,6 +1645,7 @@ async function submitArtifactUrl(article, artifactType, value) {
   const artifactValue = {
     status: "completed",
     url: validation.url,
+    ...(artifactType === "video" ? { fileId: validation.fileId } : {}),
     origin: "manual",
     locked: true,
     updatedAt: now
@@ -1571,7 +1655,7 @@ async function submitArtifactUrl(article, artifactType, value) {
       [`articles/${article.articleId}/${artifactType}`]: artifactValue,
       [`articles/${article.articleId}/updatedAt`]: now
     });
-    article[artifactType] = artifactValue;
+    article[artifactType] = normalizeArtifact(artifactValue);
     article.updatedAt = now;
     closeOperationPanel({ force: true, render: false });
     renderList();
@@ -1641,7 +1725,7 @@ function isDetailContextOpen() {
 }
 
 function isListSearchAvailable() {
-  return !state.generationPanel.open && els.slidesViewer.hidden && els.readerViewer.hidden && !isDetailContextOpen();
+  return !state.generationPanel.open && els.slidesViewer.hidden && els.readerViewer.hidden && els.videoViewer.hidden && !isDetailContextOpen();
 }
 
 const GENERATION_TEXT_MAX_LENGTH = 100000;
@@ -1657,8 +1741,7 @@ function setGenerationMode(mode) {
   });
   els.generationUrlField.hidden = isText;
   els.generationTextFields.hidden = !isText;
-  // テキストモードはスライド生成が必須(Rulesの slides === true 検証と対応)
-  if (isText) els.generationSlidesToggle.checked = true;
+
   syncGenerationSubmitting();
   setGenerationMessage("");
 }
@@ -1673,7 +1756,10 @@ function validateTextGenerationPayload() {
   const text = els.generationTextInput.value.replace(/\r\n/g, "\n").trim();
   if (!text) return { error: "本文テキストを貼り付けてください" };
   if (text.length > GENERATION_TEXT_MAX_LENGTH) return { error: "本文は100,000字以内にしてください" };
+  const slides = els.generationSlidesToggle.checked;
   const manga = els.generationMangaToggle.checked;
+  const video = els.generationVideoToggle.checked;
+  if (!slides && !manga && !video) return { error: "生成対象を選択してください" };
   const title = els.generationTitleInput.value.trim();
   const audience = els.generationAudienceInput.value.trim();
   const focus = els.generationFocusInput.value.trim();
@@ -1681,8 +1767,9 @@ function validateTextGenerationPayload() {
     payload: {
       kind: "text",
       text,
-      slides: true,
+      slides,
       manga,
+      video,
       ...(title ? { title } : {}),
       ...(audience ? { audience } : {}),
       ...(focus ? { focus } : {}),
@@ -1784,6 +1871,7 @@ function openGenerationPanel(options = {}) {
   els.generationAudienceInput.value = "";
   els.generationFocusInput.value = "";
   els.generationMangaToggle.checked = false;
+  els.generationVideoToggle.checked = false;
   els.generationMangaArtStyleSelect.value = "F";
   els.generationMangaTreatmentSelect.value = "B";
   els.generationMangaGenreSelect.value = "";
@@ -1817,7 +1905,8 @@ function validateGenerationPayload() {
 
   const slides = els.generationSlidesToggle.checked;
   const manga = els.generationMangaToggle.checked;
-  if (!slides && !manga) return { error: "生成対象を選択してください" };
+  const video = els.generationVideoToggle.checked;
+  if (!slides && !manga && !video) return { error: "生成対象を選択してください" };
 
   return {
     payload: {
@@ -1827,6 +1916,7 @@ function validateGenerationPayload() {
       audience: els.generationAudienceInput.value.trim(),
       focus: els.generationFocusInput.value.trim(),
       manga,
+      video,
       mangaArtStyle: manga ? els.generationMangaArtStyleSelect.value : undefined,
       mangaTreatment: manga ? els.generationMangaTreatmentSelect.value : undefined,
       mangaGenre: manga && els.generationMangaGenreSelect.value ? els.generationMangaGenreSelect.value : undefined
@@ -1877,9 +1967,11 @@ function formatGenerationResultMessage(payload, response) {
   const posted = [];
   if (payload.slides && response && response.slackTs) posted.push("Googleスライド");
   if (payload.manga && response && response.mangaSlackTs) posted.push("漫画");
+  if (payload.video && response && response.videoSlackTs) posted.push("動画");
   if (!posted.length) {
     if (payload.slides) posted.push("Googleスライド");
     if (payload.manga) posted.push("漫画");
+    if (payload.video) posted.push("動画");
   }
   const tracking = response && response.trackingId ? `（${response.trackingId}）` : "";
   return `生成依頼をSlackへ送信しました: ${posted.join(" / ")}${tracking}`;
@@ -1903,6 +1995,7 @@ function syncGenerationSubmitting() {
     els.generationAudienceInput,
     els.generationFocusInput,
     els.generationMangaToggle,
+    els.generationVideoToggle,
     els.generationMangaArtStyleSelect,
     els.generationMangaTreatmentSelect,
     els.generationMangaGenreSelect,
@@ -1911,17 +2004,18 @@ function syncGenerationSubmitting() {
   ].forEach((node) => {
     if (node) node.disabled = submitting;
   });
-  els.generationSlidesToggle.disabled = submitting || state.generationPanel.mode === "text";
+  els.generationSlidesToggle.disabled = submitting;
   els.generationSubmitButton.textContent = submitting ? "送信中..." : "生成を依頼";
 }
 
 function syncChromeState() {
   const slidesOpen = !els.slidesViewer.hidden;
   const readerOpen = !els.readerViewer.hidden;
+  const videoOpen = !els.videoViewer.hidden;
   const detailOpen = isDetailContextOpen();
   const generationOpen = state.generationPanel.open;
   const searchAvailable = isListSearchAvailable();
-  const showGenerationFab = !slidesOpen && !generationOpen && !readerOpen;
+  const showGenerationFab = !slidesOpen && !videoOpen && !generationOpen && !readerOpen;
   const showSearchFab = searchAvailable && !state.isSearchOpen;
 
   els.floatingActions.hidden = !showGenerationFab && !showSearchFab;
@@ -2758,10 +2852,20 @@ function setupAuth() {
 state.sharedUrl.value = readSharedUrlFromQuery();
 wireUiEvents();
 syncFilterControls();
-startAuthWatchdog();
-if (consumeAuthRecoveryFlag()) {
-  // firebase初期化前に削除することで、自ページの接続がブロック要因になるのを避ける
-  deleteFirebaseIndexedDbs().then(setupAuth);
+const videoGenerationEnabled = Boolean((window.MULTIMODAL_VIEWER_CONFIG || {}).VIDEO_GENERATION_ENABLED);
+els.generationVideoToggle.closest(".generation-check").hidden = !videoGenerationEnabled;
+if (!videoGenerationEnabled) els.generationVideoToggle.checked = false;
+const testFixture = window.MULTIMODAL_VIEWER_TEST_FIXTURE;
+if (testFixture) {
+  state.isEditor = Boolean(testFixture.isEditor);
+  hideAuthGate();
+  applyArticlesSnapshot(testFixture.articles || {});
 } else {
-  setupAuth();
+  startAuthWatchdog();
+  if (consumeAuthRecoveryFlag()) {
+  // firebase初期化前に削除することで、自ページの接続がブロック要因になるのを避ける
+    deleteFirebaseIndexedDbs().then(setupAuth);
+  } else {
+    setupAuth();
+  }
 }

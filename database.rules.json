@@ -45,6 +45,10 @@
         "deletedBy": {
           ".write": "auth != null && root.child('access/editors').child(auth.uid).val() === true",
           ".validate": "newData.isString() && newData.val() === auth.uid"
+        },
+        "video": {
+          ".write": "auth != null && root.child('access/editors').child(auth.uid).val() === true",
+          ".validate": "newData.exists() && newData.hasChildren(['status', 'url', 'fileId', 'origin', 'locked', 'updatedAt']) && newData.child('status').val() === 'completed' && newData.child('url').isString() && newData.child('url').val().length > 0 && newData.child('url').val().length <= 2048 && newData.child('url').val().beginsWith('https://drive.google.com/file/d/') && newData.child('fileId').isString() && newData.child('fileId').val().length > 0 && newData.child('fileId').val().length <= 256 && newData.child('origin').val() === 'manual' && newData.child('locked').val() === true && newData.child('updatedAt').isString() && newData.child('updatedAt').val().length > 0 && newData.child('updatedAt').val().length <= 64"
         }
       }
     },
@@ -62,10 +66,28 @@
       "$requestId": {
         ".read": "auth != null && data.child('ownerUid').val() === auth.uid",
         ".write": "auth != null && root.child('access/viewers').child(auth.uid).val() === true && !data.exists() && newData.child('ownerUid').val() === auth.uid && newData.child('status').val() === 'queued' && newData.child('trigger/provider').val() === 'web'",
-        "kind": { ".validate": "newData.val() === 'text'" },
-        "text": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100000" },
-        "slides": { ".validate": "newData.val() === true" },
-        "createdAt": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 64" }
+        "kind": {
+          ".validate": "newData.val() === 'text'"
+        },
+        "text": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100000"
+        },
+        "slides": {
+          ".validate": "newData.isBoolean()"
+        },
+        "createdAt": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 64"
+        },
+        ".validate": "(newData.child('slides').val() === true || newData.child('manga').val() === true || newData.child('video').val() === true) && ((newData.child('manga').val() === true && newData.child('mangaOptions').exists()) || (newData.child('manga').val() !== true && !newData.child('mangaOptions').exists()))",
+        "manga": {
+          ".validate": "newData.isBoolean()"
+        },
+        "video": {
+          ".validate": "newData.isBoolean()"
+        },
+        "mangaOptions": {
+          ".validate": "newData.hasChildren(['artStyle', 'treatment']) && newData.child('artStyle').isString() && newData.child('artStyle').val().matches(/^[A-G]$/) && newData.child('treatment').isString() && newData.child('treatment').val().matches(/^[A-C]$/) && (!newData.child('genre').exists() || (newData.child('genre').isString() && newData.child('genre').val().length <= 100))"
+        }
       }
     },
     "articleSources": {
