@@ -4,8 +4,7 @@ window.MULTIMODAL_VIEWER_CONFIG = {
   CLIENT_KEY: "",
   INITIAL_PAGE_COUNT: 3,
   NOTEBOOKLM_URL: "https://notebooklm.google.com/",
-  // Keep false until backend Phase 0, Rules deployment, and real-account E2E pass.
-  VIDEO_GENERATION_ENABLED: false,
+  VIDEO_GENERATION_ENABLED: true,
 
   // Firebase Web config for Phase 3 (private read of /articles behind Email/Password auth).
   // These values are NOT secrets — access is protected by Firebase Auth + the
