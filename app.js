@@ -1191,7 +1191,9 @@ function renderViewArtifactDestination(article, artifactType) {
   };
   if (artifactType === "slides") item.action = () => openSlidesViewer(article);
   if (artifactType === "manga" && completed) item.externalUrl = artifact.url;
-  if (artifactType === "video" && completed) item.action = () => openVideoViewer(article);
+  if (artifactType === "video" && completed) {
+    item.action = () => isIphoneOrIpod() ? openVideoInDriveApp(article) : openVideoViewer(article);
+  }
   return createDestinationButton(item);
 }
 
@@ -1234,7 +1236,7 @@ function artifactTitle(artifactType) {
 function artifactViewNote(artifactType, artifact) {
   if (artifact.status === "completed" && artifact.url) {
     if (artifactType === "slides") return "ビューアで開く";
-    if (artifactType === "video") return "Viewer内で再生";
+    if (artifactType === "video") return isIphoneOrIpod() ? "Google Driveアプリで再生" : "Viewer内で再生";
     return "NotebookLMを外部で開く";
   }
   if (artifact.status === "processing") return "生成中";
@@ -1320,6 +1322,40 @@ function validateGoogleDriveVideoUrl(value) {
   } catch {
     return { error: "このURLはGoogle DriveのファイルURLではありません" };
   }
+}
+
+function openVideoInDriveApp(article) {
+  const fileId = article.video.fileId || validateGoogleDriveVideoUrl(article.video.url).fileId;
+  if (!fileId) return;
+  const webUrl = article.video.url || `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`;
+  const appUrl = `googledrive://${webUrl}`;
+  let fallbackTimer;
+  const cleanup = () => {
+    if (fallbackTimer) window.clearTimeout(fallbackTimer);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+  };
+  const handleVisibilityChange = () => {
+    if (document.hidden) cleanup();
+  };
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  fallbackTimer = window.setTimeout(() => {
+    cleanup();
+    if (!document.hidden) navigateVideoUrl(webUrl);
+  }, 1200);
+  try {
+    navigateVideoUrl(appUrl);
+  } catch {
+    cleanup();
+    navigateVideoUrl(webUrl);
+  }
+}
+
+function navigateVideoUrl(url) {
+  if (typeof window.MULTIMODAL_VIEWER_TEST_NAVIGATE === "function") {
+    window.MULTIMODAL_VIEWER_TEST_NAVIGATE(url);
+    return;
+  }
+  window.location.assign(url);
 }
 
 function openVideoViewer(article) {

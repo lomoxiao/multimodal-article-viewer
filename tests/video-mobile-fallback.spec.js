@@ -25,6 +25,10 @@ async function openVideo(page) {
       isEditor: false,
       articles: { [fixtureArticle.articleId]: fixtureArticle },
     };
+    window.MULTIMODAL_VIEWER_TEST_NAVIGATIONS = [];
+    window.MULTIMODAL_VIEWER_TEST_NAVIGATE = (url) => {
+      window.MULTIMODAL_VIEWER_TEST_NAVIGATIONS.push(url);
+    };
   }, article);
   await page.route("https://drive.google.com/**", (route) => route.abort());
   await page.goto("/");
@@ -34,7 +38,6 @@ async function openVideo(page) {
     await expect(page.locator("#workspacePane")).toHaveClass(/has-mobile-detail/);
   }
   await destination.click();
-  await expect(page.locator("#videoViewer")).toBeVisible();
 }
 
 test.describe("iPhone Drive動画フォールバック", () => {
@@ -43,21 +46,21 @@ test.describe("iPhone Drive動画フォールバック", () => {
     userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
   });
 
-  test("iframeを読み込まずDriveアプリ向け同一タブリンクを表示する", async ({ page }) => {
+  test("詳細メニューからDriveアプリを直接起動し、Webへフォールバックする", async ({ page }) => {
     await openVideo(page);
 
-    await expect(page.locator("#videoFrameWrap")).toBeHidden();
-    await expect(page.locator("#videoFrame")).toHaveAttribute("src", "about:blank");
-    await expect(page.locator("#videoPlaybackNotice")).toContainText("iPhoneでは非公開のDrive動画をViewer内で再生できない");
-    await expect(page.locator("#openVideoExternal")).toHaveText("Google Driveアプリで再生");
-    await expect(page.locator("#openVideoExternal")).toHaveAttribute("href", viewUrl);
-    await expect(page.locator("#openVideoExternal")).not.toHaveAttribute("target", "_blank");
+    await expect(page.locator("#videoViewer")).toBeHidden();
+    await expect.poll(() => page.evaluate(() => window.MULTIMODAL_VIEWER_TEST_NAVIGATIONS[0])).toBe(
+      `googledrive://${viewUrl}`,
+    );
+    await expect.poll(() => page.evaluate(() => window.MULTIMODAL_VIEWER_TEST_NAVIGATIONS[1])).toBe(viewUrl);
   });
 });
 
 test("desktopではDrive previewと外部再生案内を維持する", async ({ page }) => {
   await openVideo(page);
 
+  await expect(page.locator("#videoViewer")).toBeVisible();
   await expect(page.locator("#videoFrameWrap")).toBeVisible();
   await expect(page.locator("#videoFrame")).toHaveAttribute(
     "src",
