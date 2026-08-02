@@ -1,6 +1,7 @@
 let articles = [];
 
 const IOS_APP_LINK_HOSTS = [
+  "drive.google.com",
   "notebooklm.google.com",
   "note.com",
   "x.com"
@@ -168,6 +169,8 @@ const els = {
   videoViewerBackdrop: document.getElementById("videoViewerBackdrop"),
   videoViewerCloseButton: document.getElementById("videoViewerCloseButton"),
   videoViewerTitle: document.getElementById("videoViewerTitle"),
+  videoPlaybackNotice: document.getElementById("videoPlaybackNotice"),
+  videoFrameWrap: document.getElementById("videoFrameWrap"),
   videoFrame: document.getElementById("videoFrame"),
   openVideoExternal: document.getElementById("openVideoExternal"),
   slidesTitle: document.getElementById("slidesTitle"),
@@ -1322,9 +1325,20 @@ function validateGoogleDriveVideoUrl(value) {
 function openVideoViewer(article) {
   const fileId = article.video.fileId || validateGoogleDriveVideoUrl(article.video.url).fileId;
   if (!fileId) return;
+  const externalUrl = article.video.url || `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`;
+  const iphoneExternalOnly = isIphoneOrIpod();
   els.videoViewerTitle.textContent = article.title;
-  els.videoFrame.src = `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview`;
-  els.openVideoExternal.href = article.video.url || `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`;
+  configureExternalLink(els.openVideoExternal, externalUrl);
+  els.openVideoExternal.textContent = iphoneExternalOnly ? "Google Driveアプリで再生" : "Google Driveで開く";
+  els.videoFrameWrap.hidden = iphoneExternalOnly;
+  els.videoPlaybackNotice.hidden = false;
+  if (iphoneExternalOnly) {
+    els.videoFrame.src = "about:blank";
+    els.videoPlaybackNotice.textContent = "iPhoneでは非公開のDrive動画をViewer内で再生できないため、Google DriveアプリまたはDriveのWeb画面で再生してください。";
+  } else {
+    els.videoFrame.src = `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview`;
+    els.videoPlaybackNotice.textContent = "動画が表示されない場合は「Google Driveで開く」から再生してください。";
+  }
   els.videoViewerBackdrop.hidden = false;
   els.videoViewer.hidden = false;
   syncChromeState();
@@ -1332,6 +1346,8 @@ function openVideoViewer(article) {
 
 function closeVideoViewer() {
   els.videoFrame.src = "about:blank";
+  els.videoFrameWrap.hidden = false;
+  els.videoPlaybackNotice.hidden = true;
   els.videoViewer.hidden = true;
   els.videoViewerBackdrop.hidden = true;
   syncChromeState();
@@ -2512,6 +2528,10 @@ function isIosOrIpadOs() {
   const userAgent = navigator.userAgent || "";
   return /iPad|iPhone|iPod/.test(userAgent)
     || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function isIphoneOrIpod() {
+  return /iPhone|iPod/.test(navigator.userAgent || "");
 }
 
 function isTabletLayout() {
