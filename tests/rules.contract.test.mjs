@@ -5,6 +5,7 @@ import test from "node:test";
 const rules = JSON.parse(readFileSync(new URL("../database.rules.json", import.meta.url), "utf8")).rules;
 const requestRules = rules.generationRequests.$requestId;
 const videoRules = rules.articles.$articleId.video;
+const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 
 function acceptsSelection(input) {
   const booleanKeys = ["slides", "manga", "video"];
@@ -38,4 +39,9 @@ test("manual video writes are editor-only, locked completed Drive artifacts", ()
   for (const required of ["completed", "drive.google.com/file/d/", "fileId", "manual", "locked", "updatedAt"]) {
     assert.equal(videoRules[".validate"].includes(required), true, `missing ${required}`);
   }
+});
+
+test("generation request failures prefer the server-provided safe status message", () => {
+  assert.match(appSource, /value\.statusMessage/);
+  assert.match(appSource, /showSaveStatus\(value\.statusMessage \|\|/);
 });

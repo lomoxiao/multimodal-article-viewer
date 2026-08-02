@@ -1887,7 +1887,7 @@ function watchGenerationRequestStatus(ref) {
       showSaveStatus("テキスト投入のスライド生成が完了しました");
     } else if (value.status === "failed") {
       settle();
-      showSaveStatus("テキスト投入の生成に失敗しました");
+      showSaveStatus(value.statusMessage || "テキスト投入の生成に失敗しました");
     }
   };
   const settle = () => {
