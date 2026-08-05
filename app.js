@@ -155,6 +155,8 @@ const els = {
   detailMeta: document.getElementById("detailMeta"),
   detailTitle: document.getElementById("detailTitle"),
   detailHeadline: document.getElementById("detailHeadline"),
+  detailHeadlineToggle: document.getElementById("detailHeadlineToggle"),
+  detailActionsKicker: document.getElementById("detailActionsKicker"),
   detailActions: document.getElementById("detailActions"),
   sourceChoiceBackdrop: document.getElementById("sourceChoiceBackdrop"),
   sourceChoiceSheet: document.getElementById("sourceChoiceSheet"),
@@ -263,6 +265,7 @@ function wireUiEvents() {
   });
 
   els.closeDetailButton.addEventListener("click", closeMobileWorkspace);
+  els.detailHeadlineToggle.addEventListener("click", toggleDetailHeadline);
   els.sheetBackdrop.addEventListener("click", closeMobileWorkspace);
   els.readerBackButton.addEventListener("click", closeReaderView);
   els.sourceChoiceBackdrop.addEventListener("click", () => closeSourceChoiceSheet());
@@ -551,7 +554,16 @@ function renderList() {
     return;
   }
 
+  let currentGroup = null;
   filtered.forEach((article) => {
+    const groupLabel = listGroupLabel(article.updatedAt);
+    if (groupLabel !== currentGroup) {
+      currentGroup = groupLabel;
+      const heading = document.createElement("p");
+      heading.className = "list-group-label";
+      heading.textContent = groupLabel;
+      els.articleList.appendChild(heading);
+    }
     const readState = readStateOf(article.articleId);
     const openSide = state.openSwipeArticleId === article.articleId ? state.openSwipeSide : null;
     const shell = document.createElement("div");
@@ -604,7 +616,7 @@ function renderList() {
     }
     const row = document.createElement("button");
     row.type = "button";
-    row.className = `article-row${article.articleId === state.selectedId ? " is-selected" : ""}${readState === "unread" ? " is-unread" : ""}`;
+    row.className = `article-row is-source-${escapeHtml(article.source.kind)}${article.articleId === state.selectedId ? " is-selected" : ""}${readState === "unread" ? " is-unread" : ""}`;
     row.addEventListener("click", () => {
       if (row.dataset.suppressClick === "true") {
         row.dataset.suppressClick = "false";
@@ -619,17 +631,17 @@ function renderList() {
     });
     row.innerHTML = `
       <div class="row-main">
-        <div class="row-top">
-          ${sourceChip(article.source.kind)}
-          ${statusChip("Slides", article.slides.status)}
-          ${statusChip("Manga", article.manga.status)}
-          ${article.video.exists ? statusChip("Video", article.video.status) : ""}
-          ${readState === "later" ? '<span class="chip is-later">あとで</span>' : ""}
-        </div>
         <p class="row-title">${escapeHtml(article.title)}</p>
         <p class="row-headline">${escapeHtml(article.source.headline)}</p>
+        <div class="row-status">
+          ${sourceChip(article.source.kind)}
+          ${statusChip("Slide", article.slides.status)}
+          ${statusChip("漫画", article.manga.status)}
+          ${article.video.exists ? statusChip("動画", article.video.status) : ""}
+          ${readState === "later" ? '<span class="chip is-later">あとで</span>' : ""}
+        </div>
       </div>
-      <span class="detail-cue">詳細</span>
+      <span class="row-cue" aria-hidden="true">›</span>
     `;
     shell.appendChild(row);
     shell.appendChild(laterButton);
@@ -900,6 +912,7 @@ function renderDetailContent(article) {
   renderTriageBar(article);
   els.editModeControl.hidden = !state.isEditor;
   els.editModeToggle.checked = state.isEditor && state.detailMode === "edit";
+  syncDetailHeadlineToggle();
   els.detailActions.innerHTML = "";
 
   els.detailActions.appendChild(createSourceDestination(article));
@@ -913,6 +926,23 @@ function renderDetailContent(article) {
     els.detailActions.appendChild(renderViewArtifactDestination(article, "manga"));
     if (article.video.exists) els.detailActions.appendChild(renderViewArtifactDestination(article, "video"));
   }
+  els.detailActionsKicker.textContent = `${els.detailActions.childElementCount}つの読み方`;
+}
+
+// ヘッドラインは3行で切り、続きはシート内で展開する(遷移先カードを押し出さないため)
+function syncDetailHeadlineToggle() {
+  els.detailHeadline.classList.remove("is-expanded");
+  els.detailHeadlineToggle.textContent = "続きを読む";
+  els.detailHeadlineToggle.hidden = true;
+  window.requestAnimationFrame(() => {
+    if (els.detailPanel.hidden) return;
+    els.detailHeadlineToggle.hidden = els.detailHeadline.scrollHeight <= els.detailHeadline.clientHeight + 1;
+  });
+}
+
+function toggleDetailHeadline() {
+  const expanded = els.detailHeadline.classList.toggle("is-expanded");
+  els.detailHeadlineToggle.textContent = expanded ? "閉じる" : "続きを読む";
 }
 
 // 元記事メニュー: テキスト記事はリーダー直行、Web/YouTubeは外部URL。
@@ -1134,6 +1164,11 @@ function renderTriageBar(article) {
     button.addEventListener("click", () => markReadState(article.articleId, item.next));
     els.detailTriage.appendChild(button);
   });
+  // 浮遊＋のための空きスロット。矩形を確保することで重なりを構造的に防ぐ
+  const fabSlot = document.createElement("span");
+  fabSlot.className = "triage-fab-slot";
+  fabSlot.setAttribute("aria-hidden", "true");
+  els.detailTriage.appendChild(fabSlot);
 }
 
 function createDestinationButton(item) {
@@ -2578,8 +2613,28 @@ function sourceChip(kind) {
   return `<span class="chip is-${escapeHtml(kind)}">${sourceLabel(kind)}</span>`;
 }
 
+// 媒体名は省略しない。完了は記号だけに圧縮し、判断が要る状態だけ語を出す
 function statusChip(label, status) {
-  return `<span class="status-chip is-${escapeHtml(status)}">${label}: ${statusLabel(status)}</span>`;
+  const tokens = {
+    completed: '<span class="status-mark">✓</span>',
+    processing: '<span class="status-dot" aria-hidden="true"></span><span class="status-word">生成中</span>',
+    action_required: '<span class="status-mark">!</span><span class="status-word">要対応</span>',
+    failed: '<span class="status-mark">×</span><span class="status-word">失敗</span>',
+    pending: '<span class="status-word">未着手</span>'
+  };
+  const token = tokens[status] || `<span class="status-word">${escapeHtml(statusLabel(status))}</span>`;
+  return `<span class="status-chip is-${escapeHtml(status)}"><strong>${escapeHtml(label)}</strong>${token}</span>`;
+}
+
+// 一覧の日付見出し。無地の連続を切ってスクロール位置を掴みやすくする
+function listGroupLabel(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "日付なし";
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOfDay(new Date()) - startOfDay(date)) / 86400000);
+  if (days <= 0) return "今日";
+  if (days === 1) return "昨日";
+  return new Intl.DateTimeFormat("ja-JP", { month: "long", day: "numeric" }).format(date);
 }
 
 function sourceLabel(kind) {
