@@ -205,7 +205,6 @@ const els = {
   generationFab: document.getElementById("generationFab"),
   searchFab: document.getElementById("searchFab"),
   bottomSearchBar: document.getElementById("bottomSearchBar"),
-  searchClearButton: document.getElementById("searchClearButton"),
   searchCloseButton: document.getElementById("searchCloseButton"),
   generationBackdrop: document.getElementById("generationBackdrop"),
   generationPanel: document.getElementById("generationPanel"),
@@ -240,8 +239,11 @@ function wireUiEvents() {
   window.addEventListener("scroll", () => closeOpenSwipeRow(), { passive: true });
   els.bottomSearchBar.addEventListener("submit", (event) => event.preventDefault());
   els.searchFab.addEventListener("click", openSearchBar);
-  els.searchCloseButton.addEventListener("click", closeSearchBar);
-  els.searchClearButton.addEventListener("click", clearSearchQuery);
+  // クリア専用ボタンは廃止。×は「絞り込みを解除して閉じる」1動作に統合する
+  els.searchCloseButton.addEventListener("click", () => {
+    clearSearchQuery();
+    closeSearchBar();
+  });
   els.generationFab.addEventListener("click", () => openGenerationPanel());
   els.generationBackdrop.addEventListener("click", closeGenerationPanel);
   els.generationCloseButton.addEventListener("click", closeGenerationPanel);
@@ -1438,9 +1440,7 @@ function openArtifactUrlPanel(article, artifactType, options = {}) {
     returnFocus: document.activeElement
   };
   renderOperationPanel();
-  els.detailPanel.classList.add("has-operation-panel");
-  els.detailOperationBackdrop.hidden = false;
-  els.detailOperationPanel.hidden = false;
+  showOperationPanel();
   window.requestAnimationFrame(() => {
     const input = els.detailOperationPanel.querySelector(".operation-url-input");
     input?.focus();
@@ -1473,6 +1473,7 @@ function showOperationPanel() {
   els.detailOperationPanel.hidden = false;
   els.detailOperationPanel.setAttribute("role", "dialog");
   els.detailOperationPanel.setAttribute("aria-modal", "true");
+  syncChromeState();
 }
 
 async function loadArtifactDiagnostic(article, artifactType) {
@@ -1532,16 +1533,16 @@ function renderOperationPanel() {
           <span>${escapeHtml(article.title)}</span>
         </div>
         <label class="operation-field-label" for="operationUrlInput">${escapeHtml(artifactTitle(artifactType))} URL</label>
-        <input
+        <textarea
           id="operationUrlInput"
           class="operation-url-input"
-          type="url"
+          rows="2"
           inputmode="url"
           autocomplete="url"
+          spellcheck="false"
           placeholder="${escapeHtml(placeholder)}"
-          value="${escapeHtml(state.operationPanel.value)}"
           ${state.operationPanel.submitting ? "disabled" : ""}
-        >
+        >${escapeHtml(state.operationPanel.value)}</textarea>
         <p class="field-error" role="alert" ${state.operationPanel.error ? "" : "hidden"}>${escapeHtml(state.operationPanel.error)}</p>
         <div class="operation-result-preview">
           ${createDestinationIconMarkup(artifactIcon(artifactType))}
@@ -1559,9 +1560,15 @@ function renderOperationPanel() {
   const form = els.detailOperationPanel.querySelector("form");
   const input = form.querySelector(".operation-url-input");
   input.addEventListener("input", (event) => {
-    state.operationPanel.value = event.target.value;
+    // textareaなので改行が混じりうる。URLに空白は含まれないため取り除く
+    state.operationPanel.value = event.target.value.replace(/\s+/g, "");
     state.operationPanel.dirty = true;
     state.operationPanel.error = "";
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    submitArtifactUrl(article, artifactType, state.operationPanel.value);
   });
   form.querySelector(".operation-close-button").addEventListener("click", () => closeOperationPanel());
   form.querySelector(".is-secondary").addEventListener("click", () => closeOperationPanel());
@@ -1687,6 +1694,7 @@ function closeOperationPanel(options = {}) {
   els.detailOperationPanel.removeAttribute("role");
   els.detailOperationPanel.removeAttribute("aria-modal");
   els.detailOperationPanel.innerHTML = "";
+  syncChromeState();
   if (options.render !== false) (returnFocus?.isConnected ? returnFocus : els.editModeToggle).focus();
   return true;
 }
@@ -2102,7 +2110,10 @@ function syncChromeState() {
   const detailOpen = isDetailContextOpen();
   const generationOpen = state.generationPanel.open;
   const searchAvailable = isListSearchAvailable();
-  const showGenerationFab = !slidesOpen && !videoOpen && !generationOpen && !readerOpen;
+  const searchBarOpen = state.isSearchOpen && searchAvailable;
+  // 検索バー・URL編集などのモーダル中は＋の意味が競合するため隠す
+  const showGenerationFab = !slidesOpen && !videoOpen && !generationOpen && !readerOpen &&
+    !searchBarOpen && els.detailOperationPanel.hidden && !state.settingsOpen;
   const showSearchFab = searchAvailable && !state.isSearchOpen;
 
   els.floatingActions.hidden = !showGenerationFab && !showSearchFab;
@@ -2746,6 +2757,7 @@ function openSettings() {
   els.settingsBackdrop.hidden = false;
   els.settingsPanel.hidden = false;
   document.body.classList.add("settings-open");
+  syncChromeState();
   startSessionStatusSubscription();
   window.requestAnimationFrame(() => els.settingsCloseButton.focus());
 }
@@ -2756,6 +2768,7 @@ function closeSettings() {
   els.settingsBackdrop.hidden = true;
   els.settingsPanel.hidden = true;
   document.body.classList.remove("settings-open");
+  syncChromeState();
   stopSessionStatusSubscription();
   els.settingsButton.focus();
 }
