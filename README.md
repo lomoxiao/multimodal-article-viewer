@@ -49,7 +49,7 @@ npm.cmd run dev
 https://lomoxiao.github.io/multimodal-article-viewer/?reader=<articleId>
 ```
 
-Readerは19px・行間1.85・最大42remの本文幅、端末のライト／ダーク設定、3行要約、元記事リンクに対応します。本文は`textContent`からDOMを組み立て、生HTMLを実行しません。
+Readerは19px・行間1.85・最大42remの本文幅、端末のライト／ダーク設定、3行要約、元記事リンクに対応します。構造化された保存本文では、見出し、段落、番号付き／番号なしリスト、引用、コード、区切り線をKobo向けの余白で表示します。本文は`textContent`からDOMを組み立て、生HTMLを実行しません。
 
 パーマリンクを開いて未ログインの場合は、既存のFirebase Authenticationでログインした後に同じ記事を表示します。本文の`/articleSources`は、Realtime Database Rulesにより`/access/viewers/{uid} = true`の利用者だけが読めます。
 

@@ -10,7 +10,7 @@ const article = {
 };
 
 const articleSource = {
-  markdown: "# 最初の章\n\n本文です。\n\n- 項目A\n- 項目B\n\n<script>alert('xss')</script>",
+  markdown: "# 最初の章\n\n本文です。\n\n- 項目A\n- 項目B\n\n1. 手順A\n2. 手順B\n\n> 引用1\n> 引用2\n\n<script>alert('xss')</script>",
   extractedAt: "2026-09-06T21:55:00+09:00"
 };
 
@@ -32,7 +32,9 @@ test("認証付きreaderパーマリンクから保存本文を直接開く", as
   await expect(page.locator("#readerTitle")).toHaveText(article.title);
   await expect(page.locator(".reader-summary")).toContainText("要点その3");
   await expect(page.locator(".reader-content h2")).toHaveText("最初の章");
-  await expect(page.locator(".reader-content li")).toHaveCount(2);
+  await expect(page.locator(".reader-content ul li")).toHaveCount(2);
+  await expect(page.locator(".reader-content ol li")).toHaveCount(2);
+  await expect(page.locator(".reader-content blockquote")).toContainText("引用2");
   await expect(page.locator(".reader-source a")).toHaveAttribute("href", article.canonicalUrl);
   await expect(page).toHaveURL(new RegExp(`reader=${article.articleId}`));
 });

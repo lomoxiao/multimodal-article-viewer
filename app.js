@@ -1174,14 +1174,44 @@ function renderReaderMarkdown(markdown, extractedAt, article) {
       lines.shift();
       if (!lines.length) return;
     }
-    if (lines.every((line) => /^[-・•*]\s+/.test(line))) {
-      const list = document.createElement("ul");
+    const isUnorderedList = lines.every((line) => /^[-・•*+]\s+/.test(line));
+    const isOrderedList = lines.every((line) => /^\d+[.)]\s+/.test(line));
+    if (isUnorderedList || isOrderedList) {
+      const list = document.createElement(isOrderedList ? "ol" : "ul");
       lines.forEach((line) => {
         const item = document.createElement("li");
-        item.textContent = line.replace(/^[-・•*]\s+/, "");
+        item.textContent = line.replace(
+          isOrderedList ? /^\d+[.)]\s+/ : /^[-・•*+]\s+/,
+          ""
+        );
         list.appendChild(item);
       });
       content.appendChild(list);
+      return;
+    }
+    if (lines.every((line) => /^>\s?/.test(line))) {
+      const quote = document.createElement("blockquote");
+      lines.forEach((line, index) => {
+        if (index > 0) quote.appendChild(document.createElement("br"));
+        quote.appendChild(document.createTextNode(line.replace(/^>\s?/, "")));
+      });
+      content.appendChild(quote);
+      return;
+    }
+    if (lines.length === 1 && /^([-*_])(?:\s*\1){2,}$/.test(lines[0])) {
+      content.appendChild(document.createElement("hr"));
+      return;
+    }
+    if (
+      lines.length >= 2 &&
+      lines[0].startsWith("```") &&
+      lines[lines.length - 1] === "```"
+    ) {
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      code.textContent = lines.slice(1, -1).join("\n");
+      pre.appendChild(code);
+      content.appendChild(pre);
       return;
     }
     const paragraph = document.createElement("p");

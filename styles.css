@@ -698,13 +698,34 @@ h3 {
   line-height: 1.45;
 }
 
-.reader-body ul {
+.reader-body ul,
+.reader-body ol {
   margin: 0 0 1.4rem;
   padding-left: 1.4rem;
 }
 
 .reader-body li {
   margin-bottom: .6rem;
+}
+
+.reader-body blockquote {
+  margin: 1.3rem 0;
+  padding-left: 1rem;
+  border-left: .2rem solid #8c887e;
+  color: #4c4a45;
+}
+
+.reader-body pre {
+  margin: 1.3rem 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: .84em/1.65 ui-monospace, monospace;
+}
+
+.reader-body hr {
+  margin: 2rem 0;
+  border: 0;
+  border-top: 1px solid #b8b4aa;
 }
 
 .reader-meta {
@@ -762,6 +783,15 @@ h3 {
 
   .reader-summary {
     border-color: #66635b;
+  }
+
+  .reader-body blockquote {
+    border-color: #8a877f;
+    color: #bbb7ad;
+  }
+
+  .reader-body hr {
+    border-color: #55534e;
   }
 }
 
