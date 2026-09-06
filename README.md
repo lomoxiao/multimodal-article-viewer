@@ -41,6 +41,18 @@ npm.cmd run dev
 
 `processing`、`action_required`、`failed`は詳細画面のステータスチップから処理状況を確認できます。技術的なエラーは`/artifactDiagnostics/{articleId}/{artifactType}`へ分離して保存され、editorだけが閲覧できます。
 
+## Kobo向け保存本文Reader
+
+保存済み本文は、一覧の「保存済み本文」から開けるほか、次のパーマリンクで直接開けます。
+
+```text
+https://lomoxiao.github.io/multimodal-article-viewer/?reader=<articleId>
+```
+
+Readerは19px・行間1.85・最大42remの本文幅、端末のライト／ダーク設定、3行要約、元記事リンクに対応します。本文は`textContent`からDOMを組み立て、生HTMLを実行しません。
+
+パーマリンクを開いて未ログインの場合は、既存のFirebase Authenticationでログインした後に同じ記事を表示します。本文の`/articleSources`は、Realtime Database Rulesにより`/access/viewers/{uid} = true`の利用者だけが読めます。
+
 ## 成果物URLの手動登録
 
 editor権限を持つユーザーは、詳細画面の編集スイッチからGoogle SlidesとNotebookLMのURLを登録・修正できます。閲覧モードではURL未登録の成果物は非活性になります。

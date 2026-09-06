@@ -59,6 +59,7 @@ const state = {
   isFilterPanelOpen: false,
   // articleId -> 保存済み本文の有無(undefined=未確認)。タップ時の遷移分岐に使う
   articleSourceExists: {},
+  pendingReaderArticleId: null,
   sourceChoiceReturnFocus: null,
   settingsOpen: false,
   sessionStatusRef: null,
@@ -148,6 +149,7 @@ const els = {
   readerViewer: document.getElementById("readerViewer"),
   readerBackButton: document.getElementById("readerBackButton"),
   readerTitle: document.getElementById("readerTitle"),
+  readerSourceLink: document.getElementById("readerSourceLink"),
   readerBody: document.getElementById("readerBody"),
   workspacePane: document.getElementById("workspacePane"),
   emptyWorkspace: document.getElementById("emptyWorkspace"),
@@ -481,6 +483,19 @@ function applyArticlesSnapshot(value) {
   renderList();
   els.articleList.scrollTop = scrollTop;
 
+  if (state.pendingReaderArticleId) {
+    const requested = articles.find((article) => article.articleId === state.pendingReaderArticleId);
+    state.pendingReaderArticleId = null;
+    if (requested) {
+      state.selectedId = requested.articleId;
+      renderList();
+      openReaderView(requested, { updateUrl: false });
+      return;
+    }
+    clearReaderQueryParam();
+    showSaveStatus("指定された保存済み本文が見つかりませんでした");
+  }
+
   const selected = getSelectedArticle();
   if (!selected) {
     els.detailPanel.hidden = true;
@@ -510,6 +525,7 @@ function normalizeArticle(raw) {
       kind: source.kind === "youtube" ? "youtube" : source.kind === "text" ? "text" : "web",
       headline: source.headline || ""
     },
+    tldr: article.tldr || "",
     slides: normalizeArtifact(slides),
     manga: normalizeArtifact(manga),
     video: normalizeArtifact(video),
@@ -892,6 +908,7 @@ function syncDetailAfterArticleRemoval() {
 
 function showDetail(article, options = {}) {
   if (!article) return;
+  clearReaderQueryParam();
   closeSearchBar({ keepQuery: true });
   exitViewerFullscreen();
   document.body.classList.remove("slides-viewer-open");
@@ -1051,9 +1068,10 @@ function closeSourceChoiceSheet(options = {}) {
   if (!options.skipFocus && returnFocus?.isConnected) returnFocus.focus();
 }
 
-function openReaderView(article) {
+function openReaderView(article, options = {}) {
   closeSearchBar({ keepQuery: true });
   closeGenerationPanel();
+  state.selectedId = article.articleId;
   els.detailPanel.hidden = true;
   els.emptyWorkspace.hidden = true;
   els.slidesViewer.hidden = true;
@@ -1062,6 +1080,11 @@ function openReaderView(article) {
   document.body.classList.add("sheet-open");
   els.sheetBackdrop.hidden = true;
   els.readerTitle.textContent = article.title;
+  const sourceUrl = normalizeHttpUrl(article.canonicalUrl || article.originalUrl || "");
+  els.readerSourceLink.hidden = !sourceUrl;
+  if (sourceUrl) configureExternalLink(els.readerSourceLink, sourceUrl);
+  else els.readerSourceLink.removeAttribute("href");
+  if (options.updateUrl !== false) setReaderQueryParam(article.articleId);
   renderReaderMessage("保存済み本文を読み込んでいます...");
   loadReaderContent(article);
   syncChromeState();
@@ -1070,6 +1093,7 @@ function openReaderView(article) {
 function closeReaderView() {
   if (els.readerViewer.hidden) return;
   els.readerViewer.hidden = true;
+  clearReaderQueryParam();
   showDetail(getSelectedArticle(), { keepSheet: true });
 }
 
@@ -1079,14 +1103,17 @@ async function loadReaderContent(article) {
     return;
   }
   try {
-    const snapshot = await firebase.database().ref(`articleSources/${article.articleId}`).once("value");
+    const fixtureSource = window.MULTIMODAL_VIEWER_TEST_FIXTURE?.articleSources?.[article.articleId];
+    const snapshot = fixtureSource
+      ? { val: () => fixtureSource }
+      : await firebase.database().ref(`articleSources/${article.articleId}`).once("value");
     if (els.readerViewer.hidden) return;
     const value = snapshot.val();
     if (!value || !value.markdown) {
       renderReaderMessage("この記事の保存済み本文はまだありません（次回の生成時に保存されます）");
       return;
     }
-    renderReaderMarkdown(value.markdown, value.extractedAt);
+    renderReaderMarkdown(value.markdown, value.extractedAt, article);
   } catch (error) {
     renderReaderMessage(
       /permission_denied/i.test(String(error && error.message))
@@ -1105,14 +1132,37 @@ function renderReaderMessage(message) {
 }
 
 // 生HTMLは一切通さず、すべてtextContent経由でDOMを組む(XSS防止)
-function renderReaderMarkdown(markdown, extractedAt) {
+function renderReaderMarkdown(markdown, extractedAt, article) {
   els.readerBody.replaceChildren();
+  const readingArticle = document.createElement("article");
+  readingArticle.className = "reader-article";
   if (extractedAt) {
     const meta = document.createElement("p");
     meta.className = "reader-meta";
     meta.textContent = `保存日時: ${formatDate(extractedAt)}`;
-    els.readerBody.appendChild(meta);
+    readingArticle.appendChild(meta);
   }
+  const tldrLines = String(article?.tldr || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/^[-*・•]\s*/, ""))
+    .filter(Boolean)
+    .slice(0, 3);
+  if (tldrLines.length) {
+    const summary = document.createElement("section");
+    summary.className = "reader-summary";
+    const summaryTitle = document.createElement("h2");
+    summaryTitle.textContent = "3行要約";
+    const list = document.createElement("ul");
+    tldrLines.forEach((line) => {
+      const item = document.createElement("li");
+      item.textContent = line;
+      list.appendChild(item);
+    });
+    summary.append(summaryTitle, list);
+    readingArticle.appendChild(summary);
+  }
+  const content = document.createElement("main");
+  content.className = "reader-content";
   markdown.split(/\n{2,}/).forEach((block) => {
     const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
     if (!lines.length) return;
@@ -1120,7 +1170,7 @@ function renderReaderMarkdown(markdown, extractedAt) {
     if (headingMatch) {
       const heading = document.createElement(`h${Math.min(headingMatch[1].length + 1, 4)}`);
       heading.textContent = headingMatch[2];
-      els.readerBody.appendChild(heading);
+      content.appendChild(heading);
       lines.shift();
       if (!lines.length) return;
     }
@@ -1131,7 +1181,7 @@ function renderReaderMarkdown(markdown, extractedAt) {
         item.textContent = line.replace(/^[-・•*]\s+/, "");
         list.appendChild(item);
       });
-      els.readerBody.appendChild(list);
+      content.appendChild(list);
       return;
     }
     const paragraph = document.createElement("p");
@@ -1139,8 +1189,20 @@ function renderReaderMarkdown(markdown, extractedAt) {
       if (index > 0) paragraph.appendChild(document.createElement("br"));
       paragraph.appendChild(document.createTextNode(line));
     });
-    els.readerBody.appendChild(paragraph);
+    content.appendChild(paragraph);
   });
+  readingArticle.appendChild(content);
+  const sourceUrl = normalizeHttpUrl(article?.canonicalUrl || article?.originalUrl || "");
+  if (sourceUrl) {
+    const footer = document.createElement("footer");
+    footer.className = "reader-source";
+    const link = document.createElement("a");
+    link.textContent = "元記事を開く";
+    configureExternalLink(link, sourceUrl);
+    footer.appendChild(link);
+    readingArticle.appendChild(footer);
+  }
+  els.readerBody.appendChild(readingArticle);
   els.readerBody.scrollTop = 0;
 }
 
@@ -2687,6 +2749,16 @@ function getUrlHost(url) {
   }
 }
 
+function normalizeHttpUrl(value) {
+  if (!value) return "";
+  try {
+    const parsed = new URL(value);
+    return /^https?:$/.test(parsed.protocol) ? parsed.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
 function extractPresentationId(url) {
   if (!url) return "";
   const match = url.match(/\/presentation\/d\/([^/]+)/);
@@ -2700,13 +2772,28 @@ function createSlidesPreviewUrl(presentationId) {
 function readSharedUrlFromQuery() {
   const value = new URLSearchParams(window.location.search).get("url");
   if (!value || value.length > 2048) return "";
+  return normalizeHttpUrl(value);
+}
 
-  try {
-    const parsed = new URL(value);
-    return /^https?:$/.test(parsed.protocol) ? parsed.toString() : "";
-  } catch {
-    return "";
-  }
+function readReaderArticleIdFromQuery() {
+  const value = new URLSearchParams(window.location.search).get("reader");
+  if (!value || value.length > 256 || !/^[^.#$\[\]\/]+$/.test(value)) return null;
+  return value;
+}
+
+function setReaderQueryParam(articleId) {
+  if (!articleId || !/^[^.#$\[\]\/]+$/.test(articleId)) return;
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("reader") === articleId) return;
+  url.searchParams.set("reader", articleId);
+  window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+}
+
+function clearReaderQueryParam() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("reader")) return;
+  url.searchParams.delete("reader");
+  window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
 }
 
 function removeSharedUrlQueryParam() {
@@ -2974,6 +3061,7 @@ function setupAuth() {
 }
 
 state.sharedUrl.value = readSharedUrlFromQuery();
+state.pendingReaderArticleId = readReaderArticleIdFromQuery();
 wireUiEvents();
 syncFilterControls();
 const videoGenerationEnabled = Boolean((window.MULTIMODAL_VIEWER_CONFIG || {}).VIDEO_GENERATION_ENABLED);

@@ -83,7 +83,10 @@
       <section id="readerViewer" class="reader-viewer" aria-label="保存済み本文リーダー" hidden>
         <header class="reader-head">
           <button id="readerBackButton" class="viewer-pill" type="button">戻る</button>
-          <h2 id="readerTitle"></h2>
+          <div class="reader-head-copy">
+            <h2 id="readerTitle"></h2>
+            <a id="readerSourceLink" class="reader-source-link" rel="noopener noreferrer">元記事を開く</a>
+          </div>
         </header>
         <div id="readerBody" class="reader-body" tabindex="0"></div>
       </section>

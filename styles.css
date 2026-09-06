@@ -658,39 +658,111 @@ h3 {
   white-space: nowrap;
 }
 
+.reader-head-copy {
+  min-width: 0;
+}
+
+.reader-source-link {
+  display: inline-block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  text-underline-offset: 2px;
+}
+
 .reader-body {
   overflow-y: auto;
-  padding: 16px 18px max(18px, env(safe-area-inset-bottom));
-  color: var(--ink);
-  font-size: 15px;
-  line-height: 1.8;
+  padding: 0;
+  background: #f7f5ef;
+  color: #1d1d1b;
+  font-family: Georgia, "Yu Mincho", "Hiragino Mincho ProN", serif;
+  font-size: 19px;
+  line-height: 1.85;
+}
+
+.reader-article {
+  width: min(100%, 42rem);
+  margin: 0 auto;
+  padding: 1.4rem 1.15rem max(4rem, env(safe-area-inset-bottom));
+  overflow-wrap: anywhere;
 }
 
 .reader-body p {
-  margin: 0 0 14px;
+  margin: 0 0 1.25rem;
 }
 
 .reader-body h2,
 .reader-body h3,
 .reader-body h4 {
-  margin: 22px 0 10px;
-  line-height: 1.4;
+  margin: 2rem 0 .8rem;
+  line-height: 1.45;
 }
 
 .reader-body ul {
-  margin: 0 0 14px;
-  padding-left: 20px;
+  margin: 0 0 1.4rem;
+  padding-left: 1.4rem;
+}
+
+.reader-body li {
+  margin-bottom: .6rem;
 }
 
 .reader-meta {
-  color: var(--muted);
+  color: #68655e;
+  font-family: system-ui, sans-serif;
   font-size: 12px;
+}
+
+.reader-summary {
+  margin: 0 0 2rem;
+  padding: .1rem 1rem .15rem;
+  border: 1px solid #aaa69c;
+}
+
+.reader-summary h2 {
+  margin-top: .8rem;
+  font-size: 1.3rem;
+}
+
+.reader-source {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid #b8b4aa;
+  font-family: system-ui, sans-serif;
+}
+
+.reader-source a {
+  color: inherit;
+  text-underline-offset: 3px;
 }
 
 .reader-message {
   color: var(--muted);
   text-align: center;
   padding: 32px 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .reader-viewer,
+  .reader-head,
+  .reader-body {
+    background: #111;
+    color: #e8e6df;
+  }
+
+  .reader-head,
+  .reader-source {
+    border-color: #55534e;
+  }
+
+  .reader-source-link,
+  .reader-meta {
+    color: #bbb7ad;
+  }
+
+  .reader-summary {
+    border-color: #66635b;
+  }
 }
 
 .empty-workspace,
