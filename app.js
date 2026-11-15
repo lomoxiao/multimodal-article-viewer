@@ -516,6 +516,7 @@ function normalizeArticle(raw) {
   const slides = article.slides || {};
   const manga = article.manga || {};
   const video = article.video || {};
+  const audio = article.audio || {};
   return {
     articleId: article.articleId || article.canonicalUrl || article.originalUrl || "",
     canonicalUrl: article.canonicalUrl || article.originalUrl || "",
@@ -529,6 +530,11 @@ function normalizeArticle(raw) {
     slides: normalizeArtifact(slides),
     manga: normalizeArtifact(manga),
     video: normalizeArtifact(video),
+    audio: {
+      status: audio.status === "completed" || audio.status === "expired" ? audio.status : "",
+      durationSec: Number(audio.durationSec) || 0
+    },
+    isDigest: article.registeredFrom === "daily-digest",
     deletedAt: article.deletedAt || "",
     updatedAt: article.updatedAt || article.registeredAt || ""
   };
@@ -652,7 +658,7 @@ function renderList() {
         <p class="row-title">${escapeHtml(article.title)}</p>
         <p class="row-headline">${escapeHtml(article.source.headline)}</p>
         <div class="row-status">
-          ${sourceChip(article.source.kind)}
+          ${article.isDigest ? '<span class="chip is-digest">まとめ</span>' : sourceChip(article.source.kind)}
           ${statusChip("Slide", article.slides.status)}
           ${statusChip("漫画", article.manga.status)}
           ${article.video.exists ? statusChip("動画", article.video.status) : ""}
@@ -945,6 +951,8 @@ function renderDetailContent(article) {
     els.detailActions.appendChild(renderViewArtifactDestination(article, "manga"));
     if (article.video.exists) els.detailActions.appendChild(renderViewArtifactDestination(article, "video"));
   }
+  // 音声(1日のまとめの読み上げ)。部品は audio-player.js にあり、音声の無い記事には何も足さない
+  if (window.ArticleAudioPlayer) window.ArticleAudioPlayer.appendDestination(els.detailActions, article);
   els.detailActionsKicker.textContent = `${els.detailActions.childElementCount}つの読み方`;
 }
 
@@ -1676,6 +1684,8 @@ function renderStatusDetailPanel(article, artifactType) {
   const notebookUrl = (window.MULTIMODAL_VIEWER_CONFIG || {}).NOTEBOOKLM_URL || "https://notebooklm.google.com/";
   const showNotebookAction = artifactType === "manga" &&
     (artifact.stage === "deck_generation" || artifact.stage === "url_retrieval");
+  // 本文を取得できなかった記事は、本文を貼り付けるテキスト投入へ直接進めるようにする
+  const showTextInputAction = isSourceUnavailableArtifact(artifact);
   const technicalMarkup = state.isEditor
     ? `<section class="status-technical">
         <h3>技術情報</h3>
@@ -1715,6 +1725,7 @@ function renderStatusDetailPanel(article, artifactType) {
         <button class="operation-button is-secondary status-close-button" type="button">閉じる</button>
         ${state.isEditor ? `<button class="operation-button is-secondary manual-url-button" type="button">URLを手動登録</button>` : ""}
         ${showNotebookAction ? `<a class="operation-button is-primary" href="${escapeHtml(notebookUrl)}" target="_blank" rel="noopener noreferrer">NotebookLMを開く</a>` : ""}
+        ${showTextInputAction ? `<button class="operation-button is-primary text-input-button" type="button">テキストで投入する</button>` : ""}
       </footer>
     </div>`;
   els.detailOperationPanel.querySelector(".operation-close-button").addEventListener("click", () => closeOperationPanel());
@@ -1723,6 +1734,18 @@ function renderStatusDetailPanel(article, artifactType) {
     closeOperationPanel({ force: true, render: false });
     openArtifactUrlPanel(article, artifactType, { allowViewMode: true });
   });
+  els.detailOperationPanel.querySelector(".text-input-button")?.addEventListener("click", () => {
+    closeOperationPanel({ force: true, render: false });
+    openGenerationPanel({ mode: "text", title: article.title });
+  });
+}
+
+// automation側(shared/sourceErrors.ts の SOURCE_UNAVAILABLE_PREFIX)と同じ書き出しで判定する
+const SOURCE_UNAVAILABLE_PREFIX = "本文が取れていません";
+
+function isSourceUnavailableArtifact(artifact) {
+  return artifact.status === "action_required" &&
+    String(artifact.statusMessage || "").startsWith(SOURCE_UNAVAILABLE_PREFIX);
 }
 
 function getStatusArtifactType() {
@@ -2050,10 +2073,10 @@ function openGenerationPanel(options = {}) {
     ? article.canonicalUrl || article.originalUrl || ""
     : "";
   els.generationUrlInput.value = options.sourceUrl || articleUrl;
-  els.generationTitleInput.value = "";
+  els.generationTitleInput.value = String(options.title || "").slice(0, 200);
   els.generationTextInput.value = "";
   updateGenerationTextCount();
-  setGenerationMode("url");
+  setGenerationMode(options.mode === "text" ? "text" : "url");
   els.generationSlidesToggle.checked = false;
   els.generationAudienceInput.value = "";
   els.generationFocusInput.value = "";
@@ -2066,7 +2089,9 @@ function openGenerationPanel(options = {}) {
   setGenerationMessage("");
   syncGenerationSubmitting();
   syncChromeState();
-  window.requestAnimationFrame(() => els.generationUrlInput.focus());
+  window.requestAnimationFrame(() =>
+    (state.generationPanel.mode === "text" ? els.generationTextInput : els.generationUrlInput).focus()
+  );
 }
 
 function closeGenerationPanel() {

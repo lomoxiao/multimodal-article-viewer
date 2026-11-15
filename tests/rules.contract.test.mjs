@@ -45,3 +45,10 @@ test("generation request failures prefer the server-provided safe status message
   assert.match(appSource, /value\.statusMessage/);
   assert.match(appSource, /showSaveStatus\(value\.statusMessage \|\|/);
 });
+
+test("article audio is readable by viewers only and never client-writable", () => {
+  assert.equal(rules.articleAudio[".read"], rules.articleSources[".read"]);
+  assert.equal(rules.articleAudio[".write"], false);
+  assert.equal(rules.articleAudioIndex[".read"], false);
+  assert.equal(rules.articleAudioIndex[".write"], false);
+});

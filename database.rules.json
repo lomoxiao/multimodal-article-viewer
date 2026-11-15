@@ -94,6 +94,14 @@
       ".read": "auth != null && root.child('access/viewers').child(auth.uid).val() === true",
       ".write": false
     },
+    "articleAudio": {
+      ".read": "auth != null && root.child('access/viewers').child(auth.uid).val() === true",
+      ".write": false
+    },
+    "articleAudioIndex": {
+      ".read": false,
+      ".write": false
+    },
     "sessionStatus": {
       ".read": "auth != null && root.child('access/viewers').child(auth.uid).val() === true",
       ".write": false

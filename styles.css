@@ -2752,3 +2752,89 @@ body.viewer-controls-idle.viewer-immersive .nav-next {
 .video-frame-wrap{width:100%;max-height:calc(92vh - 100px);aspect-ratio:16/9;margin:auto;background:#000;border-radius:16px;overflow:hidden}.video-frame-wrap iframe{width:100%;height:100%;border:0}
 .destination-icon.is-video{background:#e8f5e9}
 @media(max-width:720px){.video-viewer{inset:0;border-radius:0;padding:14px}.video-viewer-head{grid-template-columns:auto 1fr}.video-viewer-head>a{grid-column:1/-1;text-align:center}.video-frame-wrap{max-height:none}}
+
+/* 音声プレーヤー(audio-player.js)。詳細画面の描き直しで再生が途切れないよう、画面下の固定バーに置く */
+.chip.is-digest {
+  background: var(--tint-good);
+  color: var(--primary-action);
+}
+
+.audio-destination {
+  width: 100%;
+  cursor: pointer;
+  font: inherit;
+}
+
+.audio-destination-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--tint-good);
+  color: var(--primary-action);
+  font-size: 20px;
+}
+
+.audio-player-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1300;
+  display: grid;
+  gap: 8px;
+  padding: 10px 14px max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 -10px 28px rgba(21, 31, 24, 0.14);
+}
+
+.audio-player-bar[hidden] {
+  display: none;
+}
+
+.audio-player-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.audio-player-title {
+  overflow: hidden;
+  font-size: 0.92rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-player-speed {
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.audio-player-close {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--ink);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.audio-player-audio {
+  width: 100%;
+}
+
+.audio-player-message {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}

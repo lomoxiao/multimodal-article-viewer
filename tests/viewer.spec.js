@@ -108,3 +108,118 @@ test("video_captioning工程を意味単位字幕生成として表示する", a
   await expect(page.locator("#detailOperationPanel")).toContainText("字幕生成");
   await expect(page.locator("#detailOperationPanel")).toContainText("意味単位の字幕タイミングを確定しています");
 });
+
+test("本文が取れなかった記事は処理状況からテキスト投入へ進める", async ({ page }) => {
+  await openFixture(page, {
+    articleId: "source-unavailable",
+    title: "取得できなかった記事",
+    canonicalUrl: "https://example.com/blocked",
+    source: { kind: "web", headline: "取り込み失敗" },
+    slides: {
+      status: "action_required",
+      stage: "slides_generation",
+      statusMessage: "本文が取れていません（サイトに取得を拒否されました）。記事をコピーして、テキスト投入をお試しください。",
+      url: "",
+      origin: "automation",
+      locked: false,
+      updatedAt: "2026-11-15T12:00:00+09:00"
+    },
+    updatedAt: "2026-11-15T12:00:00+09:00"
+  });
+
+  await page.locator(".artifact-status.is-action_required.is-interactive").first().click();
+  await expect(page.locator(".status-guidance").first()).toContainText("本文が取れていません");
+  await page.locator(".text-input-button").click();
+
+  await expect(page.locator("#generationPanel")).toBeVisible();
+  await expect(page.locator("#generationTextInput")).toBeVisible();
+  await expect(page.locator("#generationUrlInput")).toBeHidden();
+  await expect(page.locator("#generationTitleInput")).toHaveValue("取得できなかった記事");
+});
+
+test("通常のaction_requiredにはテキスト投入ボタンを出さない", async ({ page }) => {
+  await openFixture(page, {
+    articleId: "session-expired",
+    title: "セッション切れの記事",
+    canonicalUrl: "https://example.com/login",
+    source: { kind: "web", headline: "要再ログイン" },
+    slides: {
+      status: "action_required",
+      stage: "slides_generation",
+      statusMessage: "example.com のセッション再取得が必要です",
+      url: "",
+      origin: "automation",
+      locked: false,
+      updatedAt: "2026-11-15T12:00:00+09:00"
+    },
+    updatedAt: "2026-11-15T12:00:00+09:00"
+  });
+
+  await page.locator(".artifact-status.is-action_required.is-interactive").first().click();
+  await expect(page.locator(".status-guidance").first()).toBeVisible();
+  await expect(page.locator(".text-input-button")).toHaveCount(0);
+});
+
+test("音声付きのまとめは、詳細から音声プレーヤーを開ける", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.MULTIMODAL_VIEWER_TEST_FIXTURE = {
+      isEditor: false,
+      articles: {
+        txt_digest: {
+          articleId: "txt_digest",
+          title: "今日のまとめ 11/15",
+          canonicalUrl: "text:txt_0123456789ab",
+          source: { kind: "text", headline: "一つ目" },
+          registeredFrom: "daily-digest",
+          tldr: "- 一つ目\n- 二つ目\n- 三つ目",
+          audio: { status: "completed", durationSec: 185, sizeBytes: 700000, updatedAt: "2026-11-15T07:00:00+09:00" },
+          updatedAt: "2026-11-15T07:00:00+09:00"
+        }
+      },
+      // 中身は再生できなくてよい(プレーヤーが開き、src が設定されることだけを確かめる)
+      articleAudio: { txt_digest: { mimeType: "audio/mp4", base64: "AAAA" } }
+    };
+  });
+  await page.goto("/");
+  await expect(page.locator("#detailPanel")).toBeVisible();
+
+  await expect(page.locator(".chip.is-digest").first()).toHaveText("まとめ");
+  const row = page.locator(".audio-destination");
+  await expect(row).toContainText("音声で聴く");
+  await expect(row).toContainText("3分05秒");
+  await row.click();
+
+  await expect(page.locator(".audio-player-bar")).toBeVisible();
+  await expect(page.locator(".audio-player-title")).toHaveText("今日のまとめ 11/15");
+  await expect(page.locator(".audio-player-audio")).toHaveAttribute("src", /^blob:/);
+  await expect(page.locator(".audio-player-speed option")).toHaveCount(4);
+
+  await page.locator(".audio-player-close").click();
+  await expect(page.locator(".audio-player-bar")).toBeHidden();
+});
+
+test("保存期間を過ぎた音声は押せない表示になる", async ({ page }) => {
+  await openFixture(page, {
+    articleId: "txt_old",
+    title: "今日のまとめ 10/20",
+    canonicalUrl: "text:txt_ba9876543210",
+    source: { kind: "text", headline: "古いまとめ" },
+    registeredFrom: "daily-digest",
+    audio: { status: "expired", durationSec: 180 },
+    updatedAt: "2026-10-20T07:00:00+09:00"
+  });
+  await expect(page.locator(".audio-destination")).toHaveAttribute("aria-disabled", "true");
+  await expect(page.locator(".audio-destination")).toContainText("保存期間");
+});
+
+test("音声の無い記事には音声の行を出さない", async ({ page }) => {
+  await openFixture(page, {
+    articleId: "no-audio",
+    title: "通常の記事",
+    canonicalUrl: "https://example.com/plain",
+    source: { kind: "web", headline: "音声なし" },
+    slides: completed("https://docs.google.com/presentation/d/test-slides/edit"),
+    updatedAt: "2026-11-15T12:00:00+09:00"
+  });
+  await expect(page.locator(".audio-destination")).toHaveCount(0);
+});
