@@ -118,3 +118,11 @@ test("bundle UI parts are loaded before app.js and stay decoupled from it", () =
   const view = readFileSync(new URL("../bundle-view.js", import.meta.url), "utf8");
   assert.match(view, /addEventListener\("click", \(\) => \{\s*unread\.forEach/);
 });
+
+test("bundle progress is shown in the list and the detail, and stale processing is treated as failed", () => {
+  assert.match(appSource, /function normalizeBundleStatus/);
+  assert.match(appSource, /BUNDLE_STALE_MS/);
+  assert.match(appSource, /bundleStatusChip\(article\)/);
+  const view = readFileSync(new URL("../bundle-view.js", import.meta.url), "utf8");
+  assert.match(view, /bundle-progress/);
+});

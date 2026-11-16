@@ -535,6 +535,8 @@ function normalizeArticle(raw) {
       durationSec: Number(audio.durationSec) || 0
     },
     isDigest: article.registeredFrom === "daily-digest",
+    // 束の作成状況(作成中はいま何をしているか、失敗時は理由)
+    bundleStatus: normalizeBundleStatus(article.bundle),
     // 束(複数記事のまとめ)に含めた記事・含められなかった記事
     bundleMembers: Array.isArray((article.bundle || {}).members)
       ? article.bundle.members.map((member) => ({
@@ -552,6 +554,19 @@ function normalizeArticle(raw) {
     deletedAt: article.deletedAt || "",
     updatedAt: article.updatedAt || article.registeredAt || ""
   };
+}
+
+// 「作成中」のまま30分以上更新がない束は、途中で止まったものとして失敗扱いにする
+const BUNDLE_STALE_MS = 30 * 60 * 1000;
+
+function normalizeBundleStatus(bundle) {
+  const value = bundle || {};
+  const status = ["processing", "completed", "failed"].includes(value.status) ? value.status : "";
+  const updatedAt = Date.parse(value.updatedAt || "");
+  if (status === "processing" && Number.isFinite(updatedAt) && Date.now() - updatedAt > BUNDLE_STALE_MS) {
+    return { status: "failed", stage: "", message: "作成が途中で止まりました。もう一度「束ねる」から作り直してください" };
+  }
+  return { status, stage: String(value.stage || ""), message: String(value.statusMessage || "") };
 }
 
 function normalizeArtifact(artifact) {
@@ -675,8 +690,9 @@ function renderList() {
         <p class="row-headline">${escapeHtml(article.source.headline)}</p>
         <div class="row-status">
           ${article.isDigest ? '<span class="chip is-digest">まとめ</span>' : sourceChip(article.source.kind)}
-          ${statusChip("Slide", article.slides.status)}
-          ${statusChip("漫画", article.manga.status)}
+          ${bundleStatusChip(article)}
+          ${article.source.kind !== "bundle" || article.slides.exists ? statusChip("Slide", article.slides.status) : ""}
+          ${article.source.kind !== "bundle" || article.manga.exists ? statusChip("漫画", article.manga.status) : ""}
           ${article.video.exists ? statusChip("動画", article.video.status) : ""}
           ${readState === "later" ? '<span class="chip is-later">あとで</span>' : ""}
         </div>
@@ -2796,6 +2812,16 @@ function statusChip(label, status) {
   };
   const token = tokens[status] || `<span class="status-word">${escapeHtml(statusLabel(status))}</span>`;
   return `<span class="status-chip is-${escapeHtml(status)}"><strong>${escapeHtml(label)}</strong>${token}</span>`;
+}
+
+// 束の作成状況。作成中は「いま何をしているか」まで出す(完了後は記号だけ)
+function bundleStatusChip(article) {
+  if (article.source.kind !== "bundle" || !article.bundleStatus.status) return "";
+  const { status, stage } = article.bundleStatus;
+  if (status === "processing" && stage) {
+    return `<span class="status-chip is-processing"><strong>まとめ</strong><span class="status-dot" aria-hidden="true"></span><span class="status-word">${escapeHtml(stage)}</span></span>`;
+  }
+  return statusChip("まとめ", status);
 }
 
 // 一覧の日付見出し。無地の連続を切ってスクロール位置を掴みやすくする

@@ -10,13 +10,31 @@
     const parent = anchor.parentNode;
     const previous = parent.querySelector(".bundle-members");
     if (previous) previous.remove();
-    if (!article || article.source.kind !== "bundle" || !article.bundleMembers.length) return;
+    if (!article || article.source.kind !== "bundle") return;
+    const progress = article.bundleStatus || {};
+    const showProgress = progress.status === "processing" || progress.status === "failed";
+    if (!article.bundleMembers.length && !showProgress) return;
 
     const included = article.bundleMembers.filter((member) => member.status === "included");
     const missing = article.bundleMembers.filter((member) => member.status === "missing");
 
     const section = document.createElement("section");
     section.className = "bundle-members";
+
+    // 作成状況。作成中はいま何をしているか、失敗時は理由を出す(完了後は出さない)
+    if (showProgress) {
+      const note = document.createElement("p");
+      note.className = `bundle-progress is-${progress.status}`;
+      note.setAttribute("role", "status");
+      note.textContent = progress.status === "processing"
+        ? `作成中: ${progress.stage || "準備中"}`
+        : progress.message || "束を作れませんでした";
+      section.appendChild(note);
+    }
+    if (!article.bundleMembers.length) {
+      parent.insertBefore(section, anchor.nextSibling);
+      return;
+    }
 
     const heading = document.createElement("p");
     heading.className = "detail-kicker";
