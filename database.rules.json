@@ -67,7 +67,7 @@
         ".read": "auth != null && data.child('ownerUid').val() === auth.uid",
         ".write": "auth != null && root.child('access/viewers').child(auth.uid).val() === true && !data.exists() && newData.child('ownerUid').val() === auth.uid && newData.child('status').val() === 'queued' && newData.child('trigger/provider').val() === 'web'",
         "kind": {
-          ".validate": "newData.val() === 'text'"
+          ".validate": "newData.val() === 'text' || newData.val() === 'url'"
         },
         "text": {
           ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100000"
@@ -78,7 +78,7 @@
         "createdAt": {
           ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 64"
         },
-        ".validate": "(newData.child('slides').val() === true || newData.child('manga').val() === true || newData.child('video').val() === true) && ((newData.child('manga').val() === true && newData.child('mangaOptions').exists()) || (newData.child('manga').val() !== true && !newData.child('mangaOptions').exists()))",
+        ".validate": "(newData.child('slides').val() === true || newData.child('manga').val() === true || newData.child('video').val() === true) && ((newData.child('manga').val() === true && newData.child('mangaOptions').exists()) || (newData.child('manga').val() !== true && !newData.child('mangaOptions').exists())) && ((newData.child('kind').val() === 'text' && newData.child('text').exists() && !newData.child('urls').exists()) || (newData.child('kind').val() === 'url' && newData.child('urls/0').exists() && !newData.child('text').exists() && (!newData.child('urls/1').exists() || (newData.child('manga').val() !== true && newData.child('video').val() !== true))))",
         "manga": {
           ".validate": "newData.isBoolean()"
         },
@@ -87,6 +87,11 @@
         },
         "mangaOptions": {
           ".validate": "newData.hasChildren(['artStyle', 'treatment']) && newData.child('artStyle').isString() && newData.child('artStyle').val().matches(/^[A-G]$/) && newData.child('treatment').isString() && newData.child('treatment').val().matches(/^[A-C]$/) && (!newData.child('genre').exists() || (newData.child('genre').isString() && newData.child('genre').val().length <= 100))"
+        },
+        "urls": {
+          "$index": {
+            ".validate": "$index.matches(/^[0-2]$/) && newData.isString() && newData.val().length > 0 && newData.val().length <= 2048 && (newData.val().beginsWith('https://') || newData.val().beginsWith('http://'))"
+          }
         }
       }
     },

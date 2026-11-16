@@ -535,6 +535,11 @@ function normalizeArticle(raw) {
       durationSec: Number(audio.durationSec) || 0
     },
     isDigest: article.registeredFrom === "daily-digest",
+    ingest: {
+      verdict: ["full", "partial", "failed"].includes((article.ingest || {}).verdict) ? article.ingest.verdict : "",
+      chars: Number((article.ingest || {}).chars) || 0,
+      message: String((article.ingest || {}).message || "")
+    },
     deletedAt: article.deletedAt || "",
     updatedAt: article.updatedAt || article.registeredAt || ""
   };
@@ -951,9 +956,24 @@ function renderDetailContent(article) {
     els.detailActions.appendChild(renderViewArtifactDestination(article, "manga"));
     if (article.video.exists) els.detailActions.appendChild(renderViewArtifactDestination(article, "video"));
   }
+  renderIngestNote(article);
   // 音声(1日のまとめの読み上げ)。部品は audio-player.js にあり、音声の無い記事には何も足さない
   if (window.ArticleAudioPlayer) window.ArticleAudioPlayer.appendDestination(els.detailActions, article);
   els.detailActionsKicker.textContent = `${els.detailActions.childElementCount}つの読み方`;
+}
+
+// 取り込み状態の注記。全文が取れている記事には出さない(一部のみ・取れていないときだけ知らせる)
+function renderIngestNote(article) {
+  const parent = els.detailActions.parentNode;
+  parent.querySelector(".ingest-note")?.remove();
+  const ingest = article.ingest || {};
+  if (ingest.verdict !== "partial" && ingest.verdict !== "failed") return;
+  const note = document.createElement("p");
+  note.className = `ingest-note is-${ingest.verdict}`;
+  note.textContent = ingest.verdict === "failed"
+    ? ingest.message || "本文が取れていません"
+    : `本文は一部のみ取得できています（${ingest.chars.toLocaleString("ja-JP")}文字）。要約が不完全な場合があります`;
+  parent.insertBefore(note, els.detailActions);
 }
 
 // ヘッドラインは3行で切り、続きはシート内で展開する(遷移先カードを押し出さないため)
@@ -1997,16 +2017,22 @@ function validateTextGenerationPayload() {
 }
 
 async function submitTextGenerationRequest() {
-  const user = firebase.auth().currentUser;
-  if (!user) {
-    setGenerationMessage("サインインが必要です", true);
-    return;
-  }
   const result = validateTextGenerationPayload();
   if (result.error) {
     setGenerationMessage(result.error, true);
     return;
   }
+  await submitQueuedGenerationRequest(result.payload, "テキストの生成依頼を登録しました");
+}
+
+// テキスト投入・URL投入の共通処理: 依頼キュー(/generationRequests)に書き、処理状況を見守る
+async function submitQueuedGenerationRequest(payload, acceptedMessage) {
+  const user = firebase.auth().currentUser;
+  if (!user) {
+    setGenerationMessage("サインインが必要です", true);
+    return;
+  }
+  const result = { payload };
   state.generationPanel.submitting = true;
   setGenerationMessage("");
   syncGenerationSubmitting();
@@ -2019,9 +2045,9 @@ async function submitTextGenerationRequest() {
       createdAt: new Date().toISOString(),
       trigger: { provider: "web" }
     });
-    watchGenerationRequestStatus(ref);
+    watchGenerationRequestStatus(ref, payload.kind);
     closeGenerationPanelAfterSubmit();
-    showSaveStatus("テキストの生成依頼を登録しました");
+    showSaveStatus(acceptedMessage);
   } catch (error) {
     state.generationPanel.submitting = false;
     setGenerationMessage(
@@ -2034,18 +2060,23 @@ async function submitTextGenerationRequest() {
   }
 }
 
-function watchGenerationRequestStatus(ref) {
+function watchGenerationRequestStatus(ref, kind = "text") {
   let settled = false;
   let timer = null;
+  let ingestShown = false;
   const handler = (snapshot) => {
     const value = snapshot.val();
     if (!value || settled) return;
     if (value.status === "done") {
       settle();
-      showSaveStatus("テキスト投入のスライド生成が完了しました");
+      showSaveStatus(kind === "url" ? "URLの生成依頼を処理しました" : "テキスト投入のスライド生成が完了しました");
     } else if (value.status === "failed") {
       settle();
-      showSaveStatus(value.statusMessage || "テキスト投入の生成に失敗しました");
+      showSaveStatus(value.statusMessage || (kind === "url" ? "URLの生成に失敗しました" : "テキスト投入の生成に失敗しました"));
+    } else if (value.ingest && !ingestShown) {
+      // 取り込み結果(本文が取れたか)を、生成の完了を待たずに知らせる
+      ingestShown = true;
+      showSaveStatus(formatIngestMessage(value.ingest));
     }
   };
   const settle = () => {
@@ -2055,6 +2086,14 @@ function watchGenerationRequestStatus(ref) {
   };
   timer = window.setTimeout(settle, GENERATION_REQUEST_WATCH_TIMEOUT_MS);
   ref.on("value", handler);
+}
+
+function formatIngestMessage(ingest) {
+  const chars = Number(ingest && ingest.chars) || 0;
+  const count = chars ? `・${chars.toLocaleString("ja-JP")}文字` : "";
+  return ingest && ingest.verdict === "partial"
+    ? `本文の一部のみ取得できました（一部${count}）。生成を続けます`
+    : `本文を取得しました（全文${count}）`;
 }
 
 function openGenerationPanel(options = {}) {
@@ -2120,7 +2159,29 @@ function validateGenerationPayload() {
   const video = els.generationVideoToggle.checked;
   if (!slides && !manga && !video) return { error: "生成対象を選択してください" };
 
+  const audience = els.generationAudienceInput.value.trim();
+  const focus = els.generationFocusInput.value.trim();
   return {
+    // 依頼キュー(/generationRequests)へ書く形。テキスト投入と同じ項目名に揃えている
+    queuePayload: {
+      kind: "url",
+      urls: [sourceUrl],
+      slides,
+      manga,
+      video,
+      ...(audience ? { audience } : {}),
+      ...(focus ? { focus } : {}),
+      ...(manga
+        ? {
+            mangaOptions: {
+              artStyle: els.generationMangaArtStyleSelect.value,
+              treatment: els.generationMangaTreatmentSelect.value,
+              ...(els.generationMangaGenreSelect.value ? { genre: els.generationMangaGenreSelect.value } : {})
+            }
+          }
+        : {})
+    },
+    // 旧経路(GAS → Slack)用。USE_GAS_GENERATION が true のときだけ使う
     payload: {
       mode: "url",
       urls: [sourceUrl],
@@ -2143,13 +2204,18 @@ async function submitGenerationRequest(event) {
     await submitTextGenerationRequest();
     return;
   }
-  if (!apiClient.hasApiUrl()) {
-    setGenerationMessage("GAS API URLが設定されていません", true);
-    return;
-  }
   const result = validateGenerationPayload();
   if (result.error) {
     setGenerationMessage(result.error, true);
+    return;
+  }
+  // URL投入もテキスト投入と同じ依頼キューへ書く。旧経路(GAS → Slack)は設定で明示したときだけ使う
+  if (!(window.MULTIMODAL_VIEWER_CONFIG || {}).USE_GAS_GENERATION) {
+    await submitQueuedGenerationRequest(result.queuePayload, "URLの生成依頼を登録しました");
+    return;
+  }
+  if (!apiClient.hasApiUrl()) {
+    setGenerationMessage("GAS API URLが設定されていません", true);
     return;
   }
 

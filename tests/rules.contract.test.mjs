@@ -52,3 +52,29 @@ test("article audio is readable by viewers only and never client-writable", () =
   assert.equal(rules.articleAudioIndex[".read"], false);
   assert.equal(rules.articleAudioIndex[".write"], false);
 });
+
+test("generation requests accept text or url kinds with mutually exclusive bodies", () => {
+  assert.equal(requestRules.kind[".validate"], "newData.val() === 'text' || newData.val() === 'url'");
+  const urlRule = requestRules.urls.$index[".validate"];
+  // 最大3件(添字0〜2)、http(s)のみ、長さ制限あり
+  for (const required of ["$index.matches(/^[0-2]$/)", "isString()", "<= 2048", "beginsWith('https://')", "beginsWith('http://')"]) {
+    assert.equal(urlRule.includes(required), true, `missing ${required}`);
+  }
+  const validate = requestRules[".validate"];
+  // text は text 必須・urls なし、url は urls/0 必須・text なし
+  assert.match(validate, /child\('kind'\)\.val\(\) === 'text' && newData\.child\('text'\)\.exists\(\) && !newData\.child\('urls'\)\.exists\(\)/);
+  assert.match(validate, /child\('kind'\)\.val\(\) === 'url' && newData\.child\('urls\/0'\)\.exists\(\) && !newData\.child\('text'\)\.exists\(\)/);
+  // 漫画・動画を含む依頼は URL 1件のみ
+  assert.match(validate, /!newData\.child\('urls\/1'\)\.exists\(\) \|\| \(newData\.child\('manga'\)\.val\(\) !== true && newData\.child\('video'\)\.val\(\) !== true\)/);
+  // 既存の制約(本人・queued・web・新規のみ)は変えていない
+  const write = requestRules[".write"];
+  for (const required of ["!data.exists()", "child('ownerUid').val() === auth.uid", "child('status').val() === 'queued'", "child('trigger/provider').val() === 'web'"]) {
+    assert.equal(write.includes(required), true, `missing ${required}`);
+  }
+});
+
+test("URL generation requests go to the request queue unless the legacy GAS path is enabled", () => {
+  assert.match(appSource, /USE_GAS_GENERATION/);
+  assert.match(appSource, /submitQueuedGenerationRequest\(result\.queuePayload/);
+  assert.match(appSource, /kind: "url"/);
+});

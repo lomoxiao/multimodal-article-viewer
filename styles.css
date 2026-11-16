@@ -2838,3 +2838,22 @@ body.viewer-controls-idle.viewer-immersive .nav-next {
   color: var(--muted);
   font-size: 0.88rem;
 }
+
+/* 取り込み状態の注記(本文が一部のみ・取れていないとき) */
+.ingest-note {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.ingest-note.is-partial {
+  background: var(--tint-warn);
+  color: var(--warn);
+}
+
+.ingest-note.is-failed {
+  background: var(--tint-bad);
+  color: var(--bad);
+}

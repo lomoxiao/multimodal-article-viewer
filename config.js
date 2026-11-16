@@ -5,6 +5,9 @@ window.MULTIMODAL_VIEWER_CONFIG = {
   INITIAL_PAGE_COUNT: 3,
   NOTEBOOKLM_URL: "https://notebooklm.google.com/",
   VIDEO_GENERATION_ENABLED: true,
+  // URL投入の経路。false(既定)は依頼キュー(/generationRequests)、true は旧経路(GAS → Slack)。
+  // 依頼キュー経路の動作確認が済んだら、この設定と旧経路のコードは削除する。
+  USE_GAS_GENERATION: false,
 
   // Firebase Web config for Phase 3 (private read of /articles behind Email/Password auth).
   // These values are NOT secrets — access is protected by Firebase Auth + the
