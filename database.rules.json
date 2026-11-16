@@ -67,7 +67,7 @@
         ".read": "auth != null && data.child('ownerUid').val() === auth.uid",
         ".write": "auth != null && root.child('access/viewers').child(auth.uid).val() === true && !data.exists() && newData.child('ownerUid').val() === auth.uid && newData.child('status').val() === 'queued' && newData.child('trigger/provider').val() === 'web'",
         "kind": {
-          ".validate": "newData.val() === 'text' || newData.val() === 'url'"
+          ".validate": "newData.val() === 'text' || newData.val() === 'url' || newData.val() === 'bundle'"
         },
         "text": {
           ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100000"
@@ -78,7 +78,7 @@
         "createdAt": {
           ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 64"
         },
-        ".validate": "(newData.child('slides').val() === true || newData.child('manga').val() === true || newData.child('video').val() === true) && ((newData.child('manga').val() === true && newData.child('mangaOptions').exists()) || (newData.child('manga').val() !== true && !newData.child('mangaOptions').exists())) && ((newData.child('kind').val() === 'text' && newData.child('text').exists() && !newData.child('urls').exists()) || (newData.child('kind').val() === 'url' && newData.child('urls/0').exists() && !newData.child('text').exists() && (!newData.child('urls/1').exists() || (newData.child('manga').val() !== true && newData.child('video').val() !== true))))",
+        ".validate": "(newData.child('kind').val() === 'bundle' || newData.child('slides').val() === true || newData.child('manga').val() === true || newData.child('video').val() === true) && ((newData.child('manga').val() === true && newData.child('mangaOptions').exists()) || (newData.child('manga').val() !== true && !newData.child('mangaOptions').exists())) && ((newData.child('kind').val() === 'text' && newData.child('text').exists() && !newData.child('urls').exists()) || (newData.child('kind').val() === 'url' && newData.child('urls/0').exists() && !newData.child('text').exists() && (!newData.child('urls/1').exists() || (newData.child('manga').val() !== true && newData.child('video').val() !== true))) || (newData.child('kind').val() === 'bundle' && newData.child('members/0').exists() && newData.child('members/1').exists() && !newData.child('text').exists() && !newData.child('urls').exists())) && (newData.child('kind').val() === 'bundle' || !newData.child('members').exists())",
         "manga": {
           ".validate": "newData.isBoolean()"
         },
@@ -92,6 +92,17 @@
           "$index": {
             ".validate": "$index.matches(/^[0-2]$/) && newData.isString() && newData.val().length > 0 && newData.val().length <= 2048 && (newData.val().beginsWith('https://') || newData.val().beginsWith('http://'))"
           }
+        },
+        "members": {
+          "$index": {
+            ".validate": "$index.matches(/^[0-9]$/) && newData.isString() && newData.val().length <= 64 && newData.val().matches(/^(url|yt|txt)_[0-9a-f]+$/)"
+          }
+        },
+        "title": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "audio": {
+          ".validate": "newData.isBoolean()"
         }
       }
     },
@@ -128,6 +139,10 @@
           ".read": "auth != null && auth.uid === $uid"
         }
       }
+    },
+    "articleDigests": {
+      ".read": false,
+      ".write": false
     }
   }
 }

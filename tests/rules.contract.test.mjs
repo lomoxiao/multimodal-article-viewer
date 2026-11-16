@@ -54,7 +54,7 @@ test("article audio is readable by viewers only and never client-writable", () =
 });
 
 test("generation requests accept text or url kinds with mutually exclusive bodies", () => {
-  assert.equal(requestRules.kind[".validate"], "newData.val() === 'text' || newData.val() === 'url'");
+  assert.equal(requestRules.kind[".validate"], "newData.val() === 'text' || newData.val() === 'url' || newData.val() === 'bundle'");
   const urlRule = requestRules.urls.$index[".validate"];
   // 最大3件(添字0〜2)、http(s)のみ、長さ制限あり
   for (const required of ["$index.matches(/^[0-2]$/)", "isString()", "<= 2048", "beginsWith('https://')", "beginsWith('http://')"]) {
@@ -73,8 +73,48 @@ test("generation requests accept text or url kinds with mutually exclusive bodie
   }
 });
 
-test("URL generation requests go to the request queue unless the legacy GAS path is enabled", () => {
-  assert.match(appSource, /USE_GAS_GENERATION/);
+test("URL generation requests go to the request queue (the legacy GAS path is gone)", () => {
   assert.match(appSource, /submitQueuedGenerationRequest\(result\.queuePayload/);
   assert.match(appSource, /kind: "url"/);
+  assert.doesNotMatch(appSource, /requestGeneration/);
+  assert.doesNotMatch(appSource, /USE_GAS_GENERATION/);
+});
+
+test("bundle requests carry 2-10 article ids and need no slides/manga/video selection", () => {
+  const validate = requestRules[".validate"];
+  // 束はスライド等を選ばなくてよい。メンバーは2件以上必須で、text / urls と同居しない
+  assert.match(validate, /^\(newData\.child\('kind'\)\.val\(\) === 'bundle' \|\| newData\.child\('slides'\)/);
+  assert.match(validate, /child\('kind'\)\.val\(\) === 'bundle' && newData\.child\('members\/0'\)\.exists\(\) && newData\.child\('members\/1'\)\.exists\(\) && !newData\.child\('text'\)\.exists\(\) && !newData\.child\('urls'\)\.exists\(\)/);
+  // 束以外の依頼に members は付けられない
+  assert.match(validate, /\(newData\.child\('kind'\)\.val\(\) === 'bundle' \|\| !newData\.child\('members'\)\.exists\(\)\)$/);
+
+  const memberRule = requestRules.members.$index[".validate"];
+  // 最大10件(添字0〜9)。記事IDの形のみ(束そのもの bnd_ や URL は不可)
+  for (const required of ["$index.matches(/^[0-9]$/)", "isString()", "<= 64", "matches(/^(url|yt|txt)_[0-9a-f]+$/)"]) {
+    assert.equal(memberRule.includes(required), true, `missing ${required}`);
+  }
+  const memberPattern = /^(url|yt|txt)_[0-9a-f]+$/;
+  assert.equal(memberPattern.test("url_0123456789ab"), true);
+  assert.equal(memberPattern.test("bnd_0123456789ab"), false);
+  assert.equal(memberPattern.test("https://example.com/"), false);
+  assert.match(requestRules.audio[".validate"], /isBoolean/);
+  assert.match(requestRules.title[".validate"], /<= 200/);
+});
+
+test("per-article digests are server-only", () => {
+  assert.equal(rules.articleDigests[".read"], false);
+  assert.equal(rules.articleDigests[".write"], false);
+});
+
+test("bundle UI parts are loaded before app.js and stay decoupled from it", () => {
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const order = ["bundle-select.js", "bundle-view.js", "app.js"].map((file) => html.indexOf(`src="${file}"`));
+  assert.ok(order.every((index) => index > 0));
+  assert.ok(order[0] < order[2] && order[1] < order[2]);
+  const select = readFileSync(new URL("../bundle-select.js", import.meta.url), "utf8");
+  assert.match(select, /kind: "bundle"/);
+  assert.match(select, /\/generationRequests/);
+  // 束を読んでも中の記事は自動で既読にしない(ボタンを押したときだけ)
+  const view = readFileSync(new URL("../bundle-view.js", import.meta.url), "utf8");
+  assert.match(view, /addEventListener\("click", \(\) => \{\s*unread\.forEach/);
 });

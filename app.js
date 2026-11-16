@@ -523,7 +523,7 @@ function normalizeArticle(raw) {
     originalUrl: article.originalUrl || article.canonicalUrl || "",
     title: article.title || "",
     source: {
-      kind: source.kind === "youtube" ? "youtube" : source.kind === "text" ? "text" : "web",
+      kind: ["youtube", "text", "bundle"].includes(source.kind) ? source.kind : "web",
       headline: source.headline || ""
     },
     tldr: article.tldr || "",
@@ -535,6 +535,15 @@ function normalizeArticle(raw) {
       durationSec: Number(audio.durationSec) || 0
     },
     isDigest: article.registeredFrom === "daily-digest",
+    // 束(複数記事のまとめ)に含めた記事・含められなかった記事
+    bundleMembers: Array.isArray((article.bundle || {}).members)
+      ? article.bundle.members.map((member) => ({
+        articleId: String((member || {}).articleId || ""),
+        title: String((member || {}).title || ""),
+        status: (member || {}).status === "missing" ? "missing" : "included",
+        reason: String((member || {}).reason || "")
+      }))
+      : [],
     ingest: {
       verdict: ["full", "partial", "failed"].includes((article.ingest || {}).verdict) ? article.ingest.verdict : "",
       chars: Number((article.ingest || {}).chars) || 0,
@@ -651,6 +660,8 @@ function renderList() {
         row.dataset.suppressClick = "false";
         return;
       }
+      // 束ねる記事を選んでいる間は、タップで選択を切り替える(詳細は開かない)
+      if (window.ArticleBundleSelect && window.ArticleBundleSelect.handleRowClick(article, row)) return;
       if (state.openSwipeArticleId === article.articleId) {
         setSwipeRowOpen(shell, null);
         return;
@@ -672,6 +683,7 @@ function renderList() {
       </div>
       <span class="row-cue" aria-hidden="true">›</span>
     `;
+    if (window.ArticleBundleSelect) window.ArticleBundleSelect.decorateRow(row, article);
     shell.appendChild(row);
     shell.appendChild(laterButton);
     shell.appendChild(rightActions);
@@ -952,11 +964,23 @@ function renderDetailContent(article) {
     els.detailActions.appendChild(renderEditableArtifactDestination(article, "manga"));
     els.detailActions.appendChild(renderEditableArtifactDestination(article, "video"));
   } else {
-    els.detailActions.appendChild(renderViewArtifactDestination(article, "slides"));
-    els.detailActions.appendChild(renderViewArtifactDestination(article, "manga"));
+    // 束の既定の出力は3行要約・本文・音声。スライド・漫画は作ったときだけ出す
+    const isBundle = article.source.kind === "bundle";
+    if (!isBundle || article.slides.exists) els.detailActions.appendChild(renderViewArtifactDestination(article, "slides"));
+    if (!isBundle || article.manga.exists) els.detailActions.appendChild(renderViewArtifactDestination(article, "manga"));
     if (article.video.exists) els.detailActions.appendChild(renderViewArtifactDestination(article, "video"));
   }
   renderIngestNote(article);
+  // 束に含まれる記事の一覧(部品は bundle-view.js。束でない記事では何も出さない)
+  if (window.ArticleBundleView) {
+    window.ArticleBundleView.render(els.detailActions, article, {
+      findArticle: (articleId) => articles.find((item) => item.articleId === articleId && !item.deletedAt),
+      openArticle: (articleId) => selectArticle(articleId, { openSheet: true }),
+      readStateOf,
+      markRead: (articleId) => markReadState(articleId, "read"),
+      showStatus: showSaveStatus
+    });
+  }
   // 音声(1日のまとめの読み上げ)。部品は audio-player.js にあり、音声の無い記事には何も足さない
   if (window.ArticleAudioPlayer) window.ArticleAudioPlayer.appendDestination(els.detailActions, article);
   els.detailActionsKicker.textContent = `${els.detailActions.childElementCount}つの読み方`;
@@ -996,14 +1020,15 @@ function toggleDetailHeadline() {
 // 保存済み本文が存在するWeb/YouTube記事だけ、タップでボトムシート2択を出す。
 function createSourceDestination(article) {
   const externalUrl = article.canonicalUrl || article.originalUrl;
-  const isTextSource = article.source.kind === "text";
+  const isBundle = article.source.kind === "bundle";
+  const isTextSource = article.source.kind === "text" || isBundle;
   const icon = getSourceDestinationIcon(article);
 
   if (isTextSource) {
     return createDestinationButton({
       icon,
-      title: "元記事",
-      note: "テキスト投入・リーダーで読む",
+      title: isBundle ? "まとめを読む" : "元記事",
+      note: isBundle ? "3行要約と本文" : "テキスト投入・リーダーで読む",
       enabled: true,
       action: () => openReaderView(article)
     });
@@ -2180,19 +2205,6 @@ function validateGenerationPayload() {
             }
           }
         : {})
-    },
-    // 旧経路(GAS → Slack)用。USE_GAS_GENERATION が true のときだけ使う
-    payload: {
-      mode: "url",
-      urls: [sourceUrl],
-      slides,
-      audience: els.generationAudienceInput.value.trim(),
-      focus: els.generationFocusInput.value.trim(),
-      manga,
-      video,
-      mangaArtStyle: manga ? els.generationMangaArtStyleSelect.value : undefined,
-      mangaTreatment: manga ? els.generationMangaTreatmentSelect.value : undefined,
-      mangaGenre: manga && els.generationMangaGenreSelect.value ? els.generationMangaGenreSelect.value : undefined
     }
   };
 }
@@ -2209,28 +2221,8 @@ async function submitGenerationRequest(event) {
     setGenerationMessage(result.error, true);
     return;
   }
-  // URL投入もテキスト投入と同じ依頼キューへ書く。旧経路(GAS → Slack)は設定で明示したときだけ使う
-  if (!(window.MULTIMODAL_VIEWER_CONFIG || {}).USE_GAS_GENERATION) {
-    await submitQueuedGenerationRequest(result.queuePayload, "URLの生成依頼を登録しました");
-    return;
-  }
-  if (!apiClient.hasApiUrl()) {
-    setGenerationMessage("GAS API URLが設定されていません", true);
-    return;
-  }
-
-  state.generationPanel.submitting = true;
-  setGenerationMessage("");
-  syncGenerationSubmitting();
-  try {
-    const response = await apiClient.post("requestGeneration", result.payload);
-    closeGenerationPanelAfterSubmit();
-    showSaveStatus(formatGenerationResultMessage(result.payload, response));
-  } catch (error) {
-    state.generationPanel.submitting = false;
-    setGenerationMessage(error && error.message ? error.message : "生成依頼に失敗しました", true);
-    syncGenerationSubmitting();
-  }
+  // URL投入もテキスト投入と同じ依頼キュー(/generationRequests)へ書く
+  await submitQueuedGenerationRequest(result.queuePayload, "URLの生成依頼を登録しました");
 }
 
 function closeGenerationPanelAfterSubmit() {
@@ -2239,20 +2231,6 @@ function closeGenerationPanelAfterSubmit() {
   state.generationPanel.error = "";
   syncGenerationSubmitting();
   syncChromeState();
-}
-
-function formatGenerationResultMessage(payload, response) {
-  const posted = [];
-  if (payload.slides && response && response.slackTs) posted.push("Googleスライド");
-  if (payload.manga && response && response.mangaSlackTs) posted.push("漫画");
-  if (payload.video && response && response.videoSlackTs) posted.push("動画");
-  if (!posted.length) {
-    if (payload.slides) posted.push("Googleスライド");
-    if (payload.manga) posted.push("漫画");
-    if (payload.video) posted.push("動画");
-  }
-  const tracking = response && response.trackingId ? `（${response.trackingId}）` : "";
-  return `生成依頼をSlackへ送信しました: ${posted.join(" / ")}${tracking}`;
 }
 
 function setGenerationMessage(message, isError = false) {
@@ -2835,6 +2813,7 @@ function sourceLabel(kind) {
   if (kind === "youtube") return "YouTube";
   if (kind === "web") return "Web";
   if (kind === "text") return "テキスト";
+  if (kind === "bundle") return "束";
   return kind || "Source";
 }
 
@@ -3201,4 +3180,13 @@ if (testFixture) {
   } else {
     setupAuth();
   }
+}
+
+// 束ねる記事の選択(部品は bundle-select.js)。一覧とは「行のタップ」と「行の飾り」の2点だけでつながる
+if (window.ArticleBundleSelect) {
+  window.ArticleBundleSelect.init({
+    mount: document.querySelector(".filter-bar"),
+    rerenderList: renderList,
+    showStatus: showSaveStatus
+  });
 }
