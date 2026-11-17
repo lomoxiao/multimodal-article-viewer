@@ -54,7 +54,10 @@ test("article audio is readable by viewers only and never client-writable", () =
 });
 
 test("generation requests accept text or url kinds with mutually exclusive bodies", () => {
-  assert.equal(requestRules.kind[".validate"], "newData.val() === 'text' || newData.val() === 'url' || newData.val() === 'bundle'");
+  assert.equal(
+    requestRules.kind[".validate"],
+    "newData.val() === 'text' || newData.val() === 'url' || newData.val() === 'bundle' || newData.val() === 'save'"
+  );
   const urlRule = requestRules.urls.$index[".validate"];
   // 最大3件(添字0〜2)、http(s)のみ、長さ制限あり
   for (const required of ["$index.matches(/^[0-2]$/)", "isString()", "<= 2048", "beginsWith('https://')", "beginsWith('http://')"]) {
@@ -83,7 +86,7 @@ test("URL generation requests go to the request queue (the legacy GAS path is go
 test("bundle requests carry 2-10 article ids and need no slides/manga/video selection", () => {
   const validate = requestRules[".validate"];
   // 束はスライド等を選ばなくてよい。メンバーは2件以上必須で、text / urls と同居しない
-  assert.match(validate, /^\(newData\.child\('kind'\)\.val\(\) === 'bundle' \|\| newData\.child\('slides'\)/);
+  assert.match(validate, /^\(newData\.child\('kind'\)\.val\(\) === 'bundle' \|\| newData\.child\('kind'\)\.val\(\) === 'save' \|\| newData\.child\('slides'\)/);
   assert.match(validate, /child\('kind'\)\.val\(\) === 'bundle' && newData\.child\('members\/0'\)\.exists\(\) && newData\.child\('members\/1'\)\.exists\(\) && !newData\.child\('text'\)\.exists\(\) && !newData\.child\('urls'\)\.exists\(\)/);
   // 束以外の依頼に members は付けられない
   assert.match(validate, /\(newData\.child\('kind'\)\.val\(\) === 'bundle' \|\| !newData\.child\('members'\)\.exists\(\)\)$/);
@@ -125,4 +128,21 @@ test("bundle progress is shown in the list and the detail, and stale processing 
   assert.match(appSource, /bundleStatusChip\(article\)/);
   const view = readFileSync(new URL("../bundle-view.js", import.meta.url), "utf8");
   assert.match(view, /bundle-progress/);
+});
+
+test("save requests carry exactly one url and never ask for slides/manga/video", () => {
+  const validate = requestRules[".validate"];
+  assert.match(
+    validate,
+    /child\('kind'\)\.val\(\) === 'save' && newData\.child\('urls\/0'\)\.exists\(\) && !newData\.child\('urls\/1'\)\.exists\(\) && !newData\.child\('text'\)\.exists\(\) && newData\.child\('slides'\)\.val\(\) !== true && newData\.child\('manga'\)\.val\(\) !== true && newData\.child\('video'\)\.val\(\) !== true/
+  );
+  // URL は既存の検証(http(s)のみ・長さ制限)をそのまま通る
+  assert.match(requestRules.urls.$index[".validate"], /beginsWith\('https:\/\/'\)/);
+
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.ok(html.indexOf('src="save-entry.js"') > 0 && html.indexOf('src="save-entry.js"') < html.indexOf('src="app.js"'));
+  const entry = readFileSync(new URL("../save-entry.js", import.meta.url), "utf8");
+  assert.match(entry, /kind: "save"/);
+  assert.match(entry, /searchParams\.delete\("save"\)/);
+  assert.match(appSource, /ViewerSaveEntry\.run\(user\)/);
 });

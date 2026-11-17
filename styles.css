@@ -3007,3 +3007,53 @@ body.is-bundle-selecting .article-list {
   background: var(--tint-bad);
   color: var(--bad);
 }
+
+/* 保存だけの入口(save-entry.js)。サインイン画面(z-index 1000)より下、アプリより上に出す */
+.save-entry-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: var(--bg);
+}
+
+.save-entry-card {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 360px);
+  padding: 22px 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  text-align: center;
+}
+
+.save-entry-message {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--primary-action);
+}
+
+.save-entry-panel.is-error .save-entry-message {
+  color: var(--bad);
+}
+
+.save-entry-detail {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.86rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.save-entry-button {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  font: inherit;
+  cursor: pointer;
+}

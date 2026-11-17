@@ -3171,6 +3171,8 @@ function setupAuth() {
       startReadStateSubscription(user.uid);
       startArticlesSubscription();
       applySharedUrlIfNeeded();
+      // 保存だけの入口(?save=…)。部品は save-entry.js
+      if (window.ViewerSaveEntry) window.ViewerSaveEntry.run(user);
     } else {
       stopArticlesSubscription();
       stopEditorAccessSubscription();
