@@ -28,13 +28,13 @@
           <div id="filterChips" class="filter-chips" aria-label="適用中の絞り込み"></div>
         </div>
         <div id="filterPanel" class="filter-panel" hidden>
-          <div class="filter-pills" role="tablist" aria-label="ソース種別">
+          <div class="filter-pills filter-pills--kind" role="tablist" aria-label="ソース種別">
             <button class="segment is-active" type="button" data-kind="all" aria-selected="true">すべて</button>
             <button class="segment" type="button" data-kind="web" aria-selected="false">Web</button>
             <button class="segment" type="button" data-kind="youtube" aria-selected="false">YouTube</button>
             <button class="segment" type="button" data-kind="bundle" aria-selected="false">束</button>
           </div>
-          <span class="filter-divider" aria-hidden="true"></span>
+          <span class="filter-divider filter-divider--kind" aria-hidden="true"></span>
           <div class="filter-pills" role="tablist" aria-label="既読状態">
             <button class="segment is-active" type="button" data-read-filter="all" aria-selected="true">すべて</button>
             <button class="segment" type="button" data-read-filter="unread" aria-selected="false">未読</button>
@@ -302,6 +302,8 @@
   <script src="config.js"></script>
   <script src="audio-player.js"></script>
   <script src="save-entry.js"></script>
+  <script src="shelf-nav.js"></script>
+  <script src="inbox-row.js"></script>
   <script src="bundle-select.js"></script>
   <script src="bundle-view.js"></script>
   <script src="app.js"></script>

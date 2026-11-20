@@ -523,7 +523,7 @@ function normalizeArticle(raw) {
     originalUrl: article.originalUrl || article.canonicalUrl || "",
     title: article.title || "",
     source: {
-      kind: ["youtube", "text", "bundle"].includes(source.kind) ? source.kind : "web",
+      kind: ["youtube", "text", "bundle", "research"].includes(source.kind) ? source.kind : "web",
       headline: source.headline || ""
     },
     tldr: article.tldr || "",
@@ -551,6 +551,9 @@ function normalizeArticle(raw) {
       chars: Number((article.ingest || {}).chars) || 0,
       message: String((article.ingest || {}).message || "")
     },
+    // 受信箱の3行要約づくりの状況(inbox-row.js が表示に使う)
+    triage: { summaryStatus: String((article.triage || {}).summaryStatus || "") },
+    registeredAt: article.registeredAt || "",
     deletedAt: article.deletedAt || "",
     updatedAt: article.updatedAt || article.registeredAt || ""
   };
@@ -601,9 +604,14 @@ function renderList() {
   els.articleCount.textContent = `${filtered.length}件`;
   els.articleList.innerHTML = "";
   syncChromeState();
+  // 画面下のタブ(shelf-nav.js)の件数を更新する
+  if (window.ShelfNav) {
+    window.ShelfNav.update(articles.filter((article) => !state.pendingDeletedIds.has(article.articleId)), readStateOf);
+  }
+  const shelf = currentShelf();
 
   if (!filtered.length) {
-    els.articleList.innerHTML = '<p class="empty-list">該当する記事がありません。</p>';
+    els.articleList.innerHTML = `<p class="empty-list">${escapeHtml(emptyShelfMessage(shelf))}</p>`;
     return;
   }
 
@@ -684,7 +692,7 @@ function renderList() {
       closeOpenSwipeRow();
       selectArticle(article.articleId, { openSheet: true });
     });
-    row.innerHTML = `
+    row.innerHTML = shelf === "inbox" && window.InboxRow ? window.InboxRow.renderRowContent(article, sourceChip) : `
       <div class="row-main">
         <p class="row-title">${escapeHtml(article.title)}</p>
         <p class="row-headline">${escapeHtml(article.source.headline)}</p>
@@ -704,14 +712,48 @@ function renderList() {
     shell.appendChild(laterButton);
     shell.appendChild(rightActions);
     attachSwipeHandlers(shell, row, article.articleId);
-    els.articleList.appendChild(shell);
+    // 受信箱では行の下に「生成する／深掘り／削除」を置く(行の中は button なので、操作ボタンは外に出す)
+    const actions = shelf === "inbox" && window.InboxRow
+      ? window.InboxRow.renderActions(article, {
+        generate: (item) => openGenerationPanel({ sourceUrl: item.canonicalUrl || item.originalUrl }),
+        research: window.ResearchAsk ? (item) => window.ResearchAsk.open(item) : null,
+        remove: (item) => deleteArticle(item),
+        canRemove: state.isEditor
+      })
+      : null;
+    if (actions) {
+      const item = document.createElement("div");
+      item.className = "inbox-item";
+      item.append(shell, actions);
+      els.articleList.appendChild(item);
+    } else {
+      els.articleList.appendChild(shell);
+    }
   });
 }
 
+// 画面下のタブ(shelf-nav.js)。部品が無いときは今までどおり全件を記事一覧として出す
+function currentShelf() {
+  return window.ShelfNav ? window.ShelfNav.current() : "list";
+}
+
+function emptyShelfMessage(shelf) {
+  if (state.query || state.readFilter !== "all" || (shelf === "list" && state.activeKind !== "all")) {
+    return "該当する記事がありません。";
+  }
+  if (shelf === "inbox") return "保存した記事はここに入ります。共有メニューやブックマークバーの「Viewerに保存」から保存できます。";
+  if (shelf === "subscription") return "毎朝のまとめはここに入ります。";
+  if (shelf === "research") return "記事の「深掘り」から依頼したレポートはここに入ります。";
+  return "該当する記事がありません。";
+}
+
 function getFilteredArticles() {
+  const shelf = currentShelf();
   return articles.filter((article) => {
     if (state.pendingDeletedIds.has(article.articleId)) return false;
-    const kindMatches = state.activeKind === "all" || article.source.kind === state.activeKind;
+    if (window.ShelfNav && window.ShelfNav.shelfOf(article) !== shelf) return false;
+    // 種別の絞り込み(Web / YouTube / 束)は記事一覧のタブでだけ効かせる
+    const kindMatches = shelf !== "list" || state.activeKind === "all" || article.source.kind === state.activeKind;
     const readMatches =
       state.readFilter === "all" || readStateOf(article.articleId) === state.readFilter;
     const haystack = `${article.title} ${article.source.headline}`.toLowerCase();
@@ -749,7 +791,7 @@ function syncFilterControls() {
 
 function renderFilterChips() {
   const chips = [];
-  if (state.activeKind !== "all") {
+  if (state.activeKind !== "all" && currentShelf() === "list") {
     chips.push({ label: sourceLabel(state.activeKind), clear: () => setKindFilter("all") });
   }
   if (state.readFilter !== "all") {
@@ -2840,6 +2882,7 @@ function sourceLabel(kind) {
   if (kind === "web") return "Web";
   if (kind === "text") return "テキスト";
   if (kind === "bundle") return "束";
+  if (kind === "research") return "深掘り";
   return kind || "Source";
 }
 
@@ -3217,4 +3260,18 @@ if (window.ArticleBundleSelect) {
     rerenderList: renderList,
     showStatus: showSaveStatus
   });
+}
+
+// 画面下のタブ(部品は shelf-nav.js)。タブを切り替えたら一覧と絞り込みの表示を描き直す
+if (window.ShelfNav) {
+  window.ShelfNav.init({
+    onChange: () => {
+      state.openSwipeArticleId = null;
+      renderFilterChips();
+      renderList();
+    }
+  });
+  // 起動時の一覧はタブの部品より先に描かれているので、件数とタブの絞り込みを反映し直す
+  renderFilterChips();
+  renderList();
 }

@@ -3057,3 +3057,233 @@ body.is-bundle-selecting .article-list {
   font: inherit;
   cursor: pointer;
 }
+
+/* 画面下のタブ(shelf-nav.js)。
+   --shelf-nav-h はタブの高さ。下に固定する他の部品(＋ボタン・検索バー・音声プレーヤー・束の選択バー)は、
+   この高さだけ上にずらして重ならないようにする。タブを隠すときは 0 に戻す。 */
+body {
+  --shelf-nav-h: 0px;
+}
+
+body.has-shelf-nav {
+  --shelf-nav-h: calc(62px + env(safe-area-inset-bottom));
+}
+
+.shelf-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  height: var(--shelf-nav-h);
+  padding: 4px 8px env(safe-area-inset-bottom);
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(12px);
+}
+
+.shelf-nav-button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 54px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.shelf-nav-button.is-active {
+  background: var(--tint-good);
+  color: var(--primary-action);
+}
+
+.shelf-nav-label {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.shelf-nav-button.is-active .shelf-nav-label {
+  font-weight: 700;
+}
+
+.shelf-nav-button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.shelf-nav-badge {
+  position: absolute;
+  top: 4px;
+  left: calc(50% + 6px);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--primary-action);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.shelf-nav-badge[hidden] {
+  display: none;
+}
+
+/* 一覧の最後の行がタブと＋ボタンに隠れないようにする(＋ボタンはタブの上にある) */
+body.has-shelf-nav .library-pane {
+  padding-bottom: calc(var(--shelf-nav-h) + 150px);
+}
+
+/* 下に固定する部品をタブの上へ */
+body.has-shelf-nav:not(.sheet-open):not(.search-bar-open) .floating-actions {
+  bottom: calc(var(--shelf-nav-h) + 12px);
+}
+
+body.has-shelf-nav.search-bar-open .floating-actions {
+  bottom: calc(var(--shelf-nav-h) + 76px);
+}
+
+body.has-shelf-nav .bottom-search-bar {
+  bottom: var(--shelf-nav-h);
+  padding-bottom: 10px;
+}
+
+body.has-shelf-nav .audio-player-bar {
+  bottom: var(--shelf-nav-h);
+  padding-bottom: 12px;
+}
+
+/* 種別の絞り込み(Web / YouTube / 束)は記事一覧のタブでだけ出す。束ねるのは受信箱と記事一覧だけ */
+body.has-shelf-nav:not([data-shelf="list"]) .filter-pills--kind,
+body.has-shelf-nav:not([data-shelf="list"]) .filter-divider--kind,
+body.has-shelf-nav[data-shelf="subscription"] .bundle-select-toggle,
+body.has-shelf-nav[data-shelf="research"] .bundle-select-toggle {
+  display: none;
+}
+
+/* 束ねる記事を選んでいる間は、タブを隠して選択バーを下に置く */
+body.is-bundle-selecting .shelf-nav {
+  display: none;
+}
+
+body.is-bundle-selecting {
+  --shelf-nav-h: 0px;
+}
+
+/* スマホ幅では、詳細シート・スライド・生成パネルなどを開いている間はタブを隠す */
+@media (max-width: 767px) {
+  body.sheet-open .shelf-nav,
+  body.slides-viewer-open .shelf-nav,
+  body.generation-panel-open .shelf-nav,
+  body.source-choice-open .shelf-nav {
+    display: none;
+  }
+
+  body.sheet-open,
+  body.slides-viewer-open,
+  body.generation-panel-open,
+  body.source-choice-open {
+    --shelf-nav-h: 0px;
+  }
+}
+
+/* 768px 以上は一覧の列の下に置く(幅と位置は shelf-nav.js が列に合わせる) */
+@media (min-width: 768px) {
+  .shelf-nav {
+    right: auto;
+    border-right: 1px solid var(--line);
+  }
+}
+
+/* 受信箱の行(inbox-row.js) */
+.inbox-item {
+  display: grid;
+  gap: 0;
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: var(--card-shadow);
+}
+
+.inbox-item .article-swipe-shell {
+  border-radius: 16px 16px 0 0;
+  box-shadow: none;
+}
+
+.inbox-item .article-row {
+  border-radius: 16px 16px 0 0;
+  box-shadow: none;
+}
+
+/* 受信箱では種別と保存日を行の先頭に置くので、上の区切り線は出さない */
+.inbox-item .row-status {
+  padding-top: 0;
+  margin-bottom: 6px;
+  border-top: 0;
+}
+
+.inbox-saved {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.inbox-tldr {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.inbox-summary-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.inbox-summary-note.is-failed {
+  color: var(--bad);
+}
+
+.inbox-actions {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 8px;
+  padding: 0 14px 14px 16px;
+}
+
+.inbox-action {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.inbox-action.is-primary {
+  border-color: var(--primary-action);
+  background: var(--primary-action);
+  color: #fff;
+  font-weight: 700;
+}
+
+.inbox-action.is-danger {
+  color: var(--bad);
+}

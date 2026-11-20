@@ -162,6 +162,8 @@ test("通常のaction_requiredにはテキスト投入ボタンを出さない",
 
 test("音声付きのまとめは、詳細から音声プレーヤーを開ける", async ({ page }) => {
   await page.addInitScript(() => {
+    // まとめは画面下のタブの「定期購読」に出る
+    window.localStorage.setItem("viewer.shelf", "subscription");
     window.MULTIMODAL_VIEWER_TEST_FIXTURE = {
       isEditor: false,
       articles: {

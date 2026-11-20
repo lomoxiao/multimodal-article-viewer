@@ -146,3 +146,40 @@ test("save requests carry exactly one url and never ask for slides/manga/video",
   assert.match(entry, /searchParams\.delete\("save"\)/);
   assert.match(appSource, /ViewerSaveEntry\.run\(user\)/);
 });
+
+test("shelf nav: every article belongs to exactly one shelf, in the documented order", async () => {
+  const { readFileSync: read } = await import("node:fs");
+  const source = read(new URL("../shelf-nav.js", import.meta.url), "utf8");
+  const sandbox = { window: { localStorage: { getItem: () => null, setItem: () => {} } }, document: {} };
+  new Function("window", "document", source)(sandbox.window, sandbox.document);
+  const { shelfOf } = sandbox.window.ShelfNav;
+  const artifact = (exists) => ({ exists });
+  const base = { source: { kind: "web" }, slides: artifact(false), manga: artifact(false), video: artifact(false), isDigest: false };
+  assert.equal(shelfOf(base), "inbox");
+  assert.equal(shelfOf({ ...base, slides: artifact(true) }), "list");
+  assert.equal(shelfOf({ ...base, video: artifact(true) }), "list");
+  assert.equal(shelfOf({ ...base, source: { kind: "bundle" } }), "list");
+  assert.equal(shelfOf({ ...base, source: { kind: "research" } }), "research");
+  assert.equal(shelfOf({ ...base, source: { kind: "text" }, isDigest: true }), "subscription");
+  // 束やまとめも、成果物の有無より種別を優先する
+  assert.equal(shelfOf({ ...base, isDigest: true, slides: artifact(true) }), "subscription");
+  assert.equal(shelfOf({ ...base, source: { kind: "research" }, slides: artifact(true) }), "research");
+});
+
+test("shelf nav and inbox rows load before app.js and app.js only touches them through small hooks", () => {
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const appAt = html.indexOf('src="app.js"');
+  for (const file of ["shelf-nav.js", "inbox-row.js"]) {
+    const at = html.indexOf(`src="${file}"`);
+    assert.ok(at > 0 && at < appAt, `${file} must load before app.js`);
+  }
+  assert.match(appSource, /window\.ShelfNav\.shelfOf\(article\) !== shelf/);
+  assert.match(appSource, /window\.InboxRow\.renderRowContent/);
+  assert.match(html, /filter-pills--kind/);
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  // 下に固定する部品はタブの高さだけ上にずらす
+  for (const selector of [".floating-actions", ".bottom-search-bar", ".audio-player-bar"]) {
+    assert.ok(css.includes(`body.has-shelf-nav`) && css.includes(selector));
+  }
+  assert.match(css, /body\.sheet-open \.shelf-nav/);
+});
