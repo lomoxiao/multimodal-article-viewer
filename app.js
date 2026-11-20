@@ -537,6 +537,18 @@ function normalizeArticle(raw) {
     isDigest: article.registeredFrom === "daily-digest",
     // 束の作成状況(作成中はいま何をしているか、失敗時は理由)
     bundleStatus: normalizeBundleStatus(article.bundle),
+    // 深掘りレポートの作成状況・出典・元の記事(表示は research-view.js)
+    researchStatus: normalizeBundleStatus(
+      article.research,
+      "作成が途中で止まりました。元の記事の「この記事を深掘りする」から作り直してください",
+      RESEARCH_STALE_MS
+    ),
+    researchSources: window.ArticleResearchView
+      ? window.ArticleResearchView.normalizeSources((article.research || {}).sources)
+      : [],
+    researchBaseId: /^(url|yt|txt)_[0-9a-f]+$/.test(String((article.research || {}).baseArticleId || ""))
+      ? article.research.baseArticleId
+      : "",
     // 束(複数記事のまとめ)に含めた記事・含められなかった記事
     bundleMembers: Array.isArray((article.bundle || {}).members)
       ? article.bundle.members.map((member) => ({
@@ -561,13 +573,19 @@ function normalizeArticle(raw) {
 
 // 「作成中」のまま30分以上更新がない束は、途中で止まったものとして失敗扱いにする
 const BUNDLE_STALE_MS = 30 * 60 * 1000;
+// 深掘りは1件20分まで。出典の確認に時間がかかるため、止まったとみなすのは45分後
+const RESEARCH_STALE_MS = 45 * 60 * 1000;
 
-function normalizeBundleStatus(bundle) {
+function normalizeBundleStatus(
+  bundle,
+  staleMessage = "作成が途中で止まりました。もう一度「束ねる」から作り直してください",
+  staleMs = BUNDLE_STALE_MS
+) {
   const value = bundle || {};
   const status = ["processing", "completed", "failed"].includes(value.status) ? value.status : "";
   const updatedAt = Date.parse(value.updatedAt || "");
-  if (status === "processing" && Number.isFinite(updatedAt) && Date.now() - updatedAt > BUNDLE_STALE_MS) {
-    return { status: "failed", stage: "", message: "作成が途中で止まりました。もう一度「束ねる」から作り直してください" };
+  if (status === "processing" && Number.isFinite(updatedAt) && Date.now() - updatedAt > staleMs) {
+    return { status: "failed", stage: "", message: staleMessage };
   }
   return { status, stage: String(value.stage || ""), message: String(value.statusMessage || "") };
 }
@@ -699,8 +717,8 @@ function renderList() {
         <div class="row-status">
           ${article.isDigest ? '<span class="chip is-digest">まとめ</span>' : sourceChip(article.source.kind)}
           ${bundleStatusChip(article)}
-          ${article.source.kind !== "bundle" || article.slides.exists ? statusChip("Slide", article.slides.status) : ""}
-          ${article.source.kind !== "bundle" || article.manga.exists ? statusChip("漫画", article.manga.status) : ""}
+          ${!isGeneratedKind(article) || article.slides.exists ? statusChip("Slide", article.slides.status) : ""}
+          ${!isGeneratedKind(article) || article.manga.exists ? statusChip("漫画", article.manga.status) : ""}
           ${article.video.exists ? statusChip("動画", article.video.status) : ""}
           ${readState === "later" ? '<span class="chip is-later">あとで</span>' : ""}
         </div>
@@ -1022,8 +1040,8 @@ function renderDetailContent(article) {
     els.detailActions.appendChild(renderEditableArtifactDestination(article, "manga"));
     els.detailActions.appendChild(renderEditableArtifactDestination(article, "video"));
   } else {
-    // 束の既定の出力は3行要約・本文・音声。スライド・漫画は作ったときだけ出す
-    const isBundle = article.source.kind === "bundle";
+    // 束・深掘りの既定の出力は3行要約・本文・音声。スライド・漫画は作ったときだけ出す
+    const isBundle = article.source.kind === "bundle" || article.source.kind === "research";
     if (!isBundle || article.slides.exists) els.detailActions.appendChild(renderViewArtifactDestination(article, "slides"));
     if (!isBundle || article.manga.exists) els.detailActions.appendChild(renderViewArtifactDestination(article, "manga"));
     if (article.video.exists) els.detailActions.appendChild(renderViewArtifactDestination(article, "video"));
@@ -1036,6 +1054,17 @@ function renderDetailContent(article) {
       openArticle: (articleId) => selectArticle(articleId, { openSheet: true }),
       readStateOf,
       markRead: (articleId) => markReadState(articleId, "read"),
+      showStatus: showSaveStatus
+    });
+  }
+  // 深掘り(部品は research-view.js)。レポートなら出典の一覧、通常の記事なら「深掘りする」
+  if (window.ArticleResearchView) {
+    window.ArticleResearchView.render(els.detailActions, article, {
+      findArticle: (articleId) => articles.find((item) => item.articleId === articleId && !item.deletedAt),
+      findReports: (articleId) => articles.filter(
+        (item) => item.source.kind === "research" && item.researchBaseId === articleId && !item.deletedAt
+      ),
+      openArticle: (articleId) => selectArticle(articleId, { openSheet: true }),
       showStatus: showSaveStatus
     });
   }
@@ -1079,14 +1108,15 @@ function toggleDetailHeadline() {
 function createSourceDestination(article) {
   const externalUrl = article.canonicalUrl || article.originalUrl;
   const isBundle = article.source.kind === "bundle";
-  const isTextSource = article.source.kind === "text" || isBundle;
+  const isResearch = article.source.kind === "research";
+  const isTextSource = article.source.kind === "text" || isBundle || isResearch;
   const icon = getSourceDestinationIcon(article);
 
   if (isTextSource) {
     return createDestinationButton({
       icon,
-      title: isBundle ? "まとめを読む" : "元記事",
-      note: isBundle ? "3行要約と本文" : "テキスト投入・リーダーで読む",
+      title: isResearch ? "レポートを読む" : isBundle ? "まとめを読む" : "元記事",
+      note: isResearch ? "3行要約と出典つきの本文" : isBundle ? "3行要約と本文" : "テキスト投入・リーダーで読む",
       enabled: true,
       action: () => openReaderView(article)
     });
@@ -2857,13 +2887,22 @@ function statusChip(label, status) {
 }
 
 // 束の作成状況。作成中は「いま何をしているか」まで出す(完了後は記号だけ)
+// 束・深掘りレポート(他の記事から作ったもの)。スライド・漫画は作ったときだけ出す
+function isGeneratedKind(article) {
+  return article.source.kind === "bundle" || article.source.kind === "research";
+}
+
 function bundleStatusChip(article) {
-  if (article.source.kind !== "bundle" || !article.bundleStatus.status) return "";
-  const { status, stage } = article.bundleStatus;
+  const isResearch = article.source.kind === "research";
+  if (article.source.kind !== "bundle" && !isResearch) return "";
+  const progress = isResearch ? article.researchStatus : article.bundleStatus;
+  if (!progress.status) return "";
+  const { status, stage } = progress;
+  const label = isResearch ? "レポート" : "まとめ";
   if (status === "processing" && stage) {
-    return `<span class="status-chip is-processing"><strong>まとめ</strong><span class="status-dot" aria-hidden="true"></span><span class="status-word">${escapeHtml(stage)}</span></span>`;
+    return `<span class="status-chip is-processing"><strong>${label}</strong><span class="status-dot" aria-hidden="true"></span><span class="status-word">${escapeHtml(stage)}</span></span>`;
   }
-  return statusChip("まとめ", status);
+  return statusChip(label, status);
 }
 
 // 一覧の日付見出し。無地の連続を切ってスクロール位置を掴みやすくする
@@ -3261,6 +3300,9 @@ if (window.ArticleBundleSelect) {
     showStatus: showSaveStatus
   });
 }
+
+// 深掘りの依頼(部品は research-ask.js)。受信箱の「深掘り」と詳細の「この記事を深掘りする」から開く
+if (window.ResearchAsk) window.ResearchAsk.init({ showStatus: showSaveStatus });
 
 // 画面下のタブ(部品は shelf-nav.js)。タブを切り替えたら一覧と絞り込みの表示を描き直す
 if (window.ShelfNav) {

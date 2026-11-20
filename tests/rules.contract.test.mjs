@@ -56,7 +56,7 @@ test("article audio is readable by viewers only and never client-writable", () =
 test("generation requests accept text or url kinds with mutually exclusive bodies", () => {
   assert.equal(
     requestRules.kind[".validate"],
-    "newData.val() === 'text' || newData.val() === 'url' || newData.val() === 'bundle' || newData.val() === 'save'"
+    "newData.val() === 'text' || newData.val() === 'url' || newData.val() === 'bundle' || newData.val() === 'save' || newData.val() === 'research'"
   );
   const urlRule = requestRules.urls.$index[".validate"];
   // 最大3件(添字0〜2)、http(s)のみ、長さ制限あり
@@ -86,10 +86,10 @@ test("URL generation requests go to the request queue (the legacy GAS path is go
 test("bundle requests carry 2-10 article ids and need no slides/manga/video selection", () => {
   const validate = requestRules[".validate"];
   // 束はスライド等を選ばなくてよい。メンバーは2件以上必須で、text / urls と同居しない
-  assert.match(validate, /^\(newData\.child\('kind'\)\.val\(\) === 'bundle' \|\| newData\.child\('kind'\)\.val\(\) === 'save' \|\| newData\.child\('slides'\)/);
+  assert.match(validate, /^\(newData\.child\('kind'\)\.val\(\) === 'bundle' \|\| newData\.child\('kind'\)\.val\(\) === 'save' \|\| newData\.child\('kind'\)\.val\(\) === 'research' \|\| newData\.child\('slides'\)/);
   assert.match(validate, /child\('kind'\)\.val\(\) === 'bundle' && newData\.child\('members\/0'\)\.exists\(\) && newData\.child\('members\/1'\)\.exists\(\) && !newData\.child\('text'\)\.exists\(\) && !newData\.child\('urls'\)\.exists\(\)/);
   // 束以外の依頼に members は付けられない
-  assert.match(validate, /\(newData\.child\('kind'\)\.val\(\) === 'bundle' \|\| !newData\.child\('members'\)\.exists\(\)\)$/);
+  assert.match(validate, /\(newData\.child\('kind'\)\.val\(\) === 'bundle' \|\| !newData\.child\('members'\)\.exists\(\)\) && /);
 
   const memberRule = requestRules.members.$index[".validate"];
   // 最大10件(添字0〜9)。記事IDの形のみ(束そのもの bnd_ や URL は不可)
@@ -182,4 +182,36 @@ test("shelf nav and inbox rows load before app.js and app.js only touches them t
     assert.ok(css.includes(`body.has-shelf-nav`) && css.includes(selector));
   }
   assert.match(css, /body\.sheet-open \.shelf-nav/);
+});
+
+test("research requests carry a base article id and 1-6 known aspects, and never ask for slides/manga/video", () => {
+  const validate = requestRules[".validate"];
+  assert.match(
+    validate,
+    /child\('kind'\)\.val\(\) === 'research' && newData\.child\('articleId'\)\.exists\(\) && newData\.child\('aspects\/0'\)\.exists\(\) && !newData\.child\('text'\)\.exists\(\) && !newData\.child\('urls'\)\.exists\(\) && newData\.child\('slides'\)\.val\(\) !== true && newData\.child\('manga'\)\.val\(\) !== true && newData\.child\('video'\)\.val\(\) !== true/
+  );
+  // 深掘り以外の依頼に articleId / aspects / note / vaultCandidate は付けられない
+  assert.match(validate, /\(newData\.child\('kind'\)\.val\(\) === 'research' \|\| \(!newData\.child\('articleId'\)\.exists\(\) && !newData\.child\('aspects'\)\.exists\(\) && !newData\.child\('note'\)\.exists\(\) && !newData\.child\('vaultCandidate'\)\.exists\(\)\)\)$/);
+  // 元にできるのは通常の記事だけ(束 bnd_・深掘り rsc_ は不可)
+  assert.match(requestRules.articleId[".validate"], /matches\(\/\^\(url\|yt\|txt\)_\[0-9a-f\]\+\$\/\)/);
+  const aspectRule = requestRules.aspects.$index[".validate"];
+  assert.ok(aspectRule.includes("$index.matches(/^[0-5]$/)"));
+  for (const id of ["related", "reception", "counter", "evidence", "followup", "impact"]) assert.ok(aspectRule.includes(id), id);
+  assert.match(requestRules.note[".validate"], /<= 500/);
+  assert.match(requestRules.vaultCandidate[".validate"], /isBoolean/);
+
+  // 観点の表は Viewer と常駐プロセスで同じ(ID の並びまで一致)
+  const ask = readFileSync(new URL("../research-ask.js", import.meta.url), "utf8");
+  const ids = [...ask.matchAll(/\{ id: "([a-z]+)", label: "([^"]+)" \}/g)].map((match) => match[1]);
+  assert.deepEqual(ids, ["related", "reception", "counter", "evidence", "followup", "impact"]);
+  assert.match(ask, /kind: "research"/);
+  assert.match(ask, /\/generationRequests/);
+
+  const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const order = ["research-ask.js", "research-view.js", "app.js"].map((file) => html.indexOf(`src="${file}"`));
+  assert.ok(order.every((index) => index > 0) && order[0] < order[2] && order[1] < order[2]);
+  const view = readFileSync(new URL("../research-view.js", import.meta.url), "utf8");
+  // 出典の保存は保存だけの依頼(kind: "save")を使う
+  assert.match(view, /kind: "save"/);
+  assert.match(appSource, /RESEARCH_STALE_MS/);
 });

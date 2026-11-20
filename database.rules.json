@@ -67,7 +67,7 @@
         ".read": "auth != null && data.child('ownerUid').val() === auth.uid",
         ".write": "auth != null && root.child('access/viewers').child(auth.uid).val() === true && !data.exists() && newData.child('ownerUid').val() === auth.uid && newData.child('status').val() === 'queued' && newData.child('trigger/provider').val() === 'web'",
         "kind": {
-          ".validate": "newData.val() === 'text' || newData.val() === 'url' || newData.val() === 'bundle' || newData.val() === 'save'"
+          ".validate": "newData.val() === 'text' || newData.val() === 'url' || newData.val() === 'bundle' || newData.val() === 'save' || newData.val() === 'research'"
         },
         "text": {
           ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 100000"
@@ -78,7 +78,7 @@
         "createdAt": {
           ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 64"
         },
-        ".validate": "(newData.child('kind').val() === 'bundle' || newData.child('kind').val() === 'save' || newData.child('slides').val() === true || newData.child('manga').val() === true || newData.child('video').val() === true) && ((newData.child('manga').val() === true && newData.child('mangaOptions').exists()) || (newData.child('manga').val() !== true && !newData.child('mangaOptions').exists())) && ((newData.child('kind').val() === 'text' && newData.child('text').exists() && !newData.child('urls').exists()) || (newData.child('kind').val() === 'url' && newData.child('urls/0').exists() && !newData.child('text').exists() && (!newData.child('urls/1').exists() || (newData.child('manga').val() !== true && newData.child('video').val() !== true))) || (newData.child('kind').val() === 'save' && newData.child('urls/0').exists() && !newData.child('urls/1').exists() && !newData.child('text').exists() && newData.child('slides').val() !== true && newData.child('manga').val() !== true && newData.child('video').val() !== true) || (newData.child('kind').val() === 'bundle' && newData.child('members/0').exists() && newData.child('members/1').exists() && !newData.child('text').exists() && !newData.child('urls').exists())) && (newData.child('kind').val() === 'bundle' || !newData.child('members').exists())",
+        ".validate": "(newData.child('kind').val() === 'bundle' || newData.child('kind').val() === 'save' || newData.child('kind').val() === 'research' || newData.child('slides').val() === true || newData.child('manga').val() === true || newData.child('video').val() === true) && ((newData.child('manga').val() === true && newData.child('mangaOptions').exists()) || (newData.child('manga').val() !== true && !newData.child('mangaOptions').exists())) && ((newData.child('kind').val() === 'text' && newData.child('text').exists() && !newData.child('urls').exists()) || (newData.child('kind').val() === 'url' && newData.child('urls/0').exists() && !newData.child('text').exists() && (!newData.child('urls/1').exists() || (newData.child('manga').val() !== true && newData.child('video').val() !== true))) || (newData.child('kind').val() === 'save' && newData.child('urls/0').exists() && !newData.child('urls/1').exists() && !newData.child('text').exists() && newData.child('slides').val() !== true && newData.child('manga').val() !== true && newData.child('video').val() !== true) || (newData.child('kind').val() === 'bundle' && newData.child('members/0').exists() && newData.child('members/1').exists() && !newData.child('text').exists() && !newData.child('urls').exists()) || (newData.child('kind').val() === 'research' && newData.child('articleId').exists() && newData.child('aspects/0').exists() && !newData.child('text').exists() && !newData.child('urls').exists() && newData.child('slides').val() !== true && newData.child('manga').val() !== true && newData.child('video').val() !== true)) && (newData.child('kind').val() === 'bundle' || !newData.child('members').exists()) && (newData.child('kind').val() === 'research' || (!newData.child('articleId').exists() && !newData.child('aspects').exists() && !newData.child('note').exists() && !newData.child('vaultCandidate').exists()))",
         "manga": {
           ".validate": "newData.isBoolean()"
         },
@@ -102,6 +102,20 @@
           ".validate": "newData.isString() && newData.val().length <= 200"
         },
         "audio": {
+          ".validate": "newData.isBoolean()"
+        },
+        "articleId": {
+          ".validate": "newData.isString() && newData.val().length <= 64 && newData.val().matches(/^(url|yt|txt)_[0-9a-f]+$/)"
+        },
+        "aspects": {
+          "$index": {
+            ".validate": "$index.matches(/^[0-5]$/) && newData.isString() && newData.val().matches(/^(related|reception|counter|evidence|followup|impact)$/)"
+          }
+        },
+        "note": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "vaultCandidate": {
           ".validate": "newData.isBoolean()"
         }
       }

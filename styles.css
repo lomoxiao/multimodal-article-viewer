@@ -3287,3 +3287,209 @@ body.is-bundle-selecting {
 .inbox-action.is-danger {
   color: var(--bad);
 }
+
+/* 深掘りの依頼(research-ask.js)。下から出るシート。z-index は元記事の2択シートと同じ層 */
+.research-ask-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(21, 31, 24, 0.4);
+}
+
+.research-ask-backdrop[hidden],
+.research-ask-sheet[hidden] {
+  display: none;
+}
+
+.research-ask-sheet {
+  position: fixed;
+  left: max(10px, env(safe-area-inset-left));
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
+  z-index: 1201;
+  display: grid;
+  gap: 10px;
+  max-width: 520px;
+  max-height: calc(100dvh - 40px);
+  margin: 0 auto;
+  padding: 18px 16px 14px;
+  overflow-y: auto;
+  border-radius: 16px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.research-ask-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.research-ask-target,
+.research-ask-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.research-ask-lead {
+  margin: 4px 0 0;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.research-ask-aspects {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.research-ask-aspect {
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.research-ask-aspect.is-selected {
+  border-color: var(--primary-action);
+  background: var(--tint-good);
+  color: var(--primary-action);
+  font-weight: 700;
+}
+
+.research-ask-note {
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.research-ask-note textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 400;
+  resize: vertical;
+}
+
+.research-ask-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+}
+
+.research-ask-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  font-size: 14px;
+}
+
+.research-ask-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.research-ask-cancel,
+.research-ask-submit,
+.research-ask-open-button,
+.research-source-save {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.research-ask-submit {
+  border-color: var(--primary-action);
+  background: var(--primary-action);
+  color: #fff;
+  font-weight: 600;
+}
+
+.research-ask-submit:disabled,
+.research-source-save:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 詳細の深掘り(research-view.js) */
+.research-panel {
+  margin-top: 18px;
+}
+
+.research-report-list,
+.research-source-list {
+  margin: 6px 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.research-source-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.research-source-list li small {
+  grid-column: 1;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.research-source-list .research-source-save {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.research-source-link {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.research-source-list.is-missing .research-source-link {
+  color: var(--muted);
+}
+
+.research-report-link {
+  display: block;
+  width: 100%;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--primary-action);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (max-width: 767px) {
+  body.research-ask-open .shelf-nav {
+    display: none;
+  }
+}
